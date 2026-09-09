@@ -30,8 +30,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let dir = ProcessInfo.processInfo.environment["TEAMCLAUDE_BAR_SNAPSHOT"], !dir.isEmpty {
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(4))
+                store.loadConfigRoot()
                 Snapshot.write(store: store, to: URL(fileURLWithPath: dir))
                 NSApp.terminate(nil)
+            }
+        }
+        // `TEAMCLAUDE_BAR_DEBUG_WINDOW=<section>` opens the settings window on that
+        // section and the popover, and logs their window numbers for `screencapture -l`.
+        if let raw = ProcessInfo.processInfo.environment["TEAMCLAUDE_BAR_DEBUG_WINDOW"], let section = SettingsSection(rawValue: raw) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(3))
+                settings = SettingsWindowController(store: store, section: section)
+                settings?.show()
+                NSLog("[TeamClaudeBar] settings window %d", settings?.windowNumber ?? -1)
+                statusItem.showPopover()
+                try? await Task.sleep(for: .seconds(1))
+                NSLog("[TeamClaudeBar] popover window %d", statusItem.popoverWindowNumber ?? -1)
             }
         }
     }

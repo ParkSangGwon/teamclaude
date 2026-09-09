@@ -35,8 +35,15 @@ final class AppStore {
     private(set) var rotatedAt: Date?
     private(set) var rotatedTo: String?
     private(set) var restartPending: Set<String> = []
+    /// The config document as last read, for the settings screens.
+    private(set) var configRoot: JSON?
+    private(set) var configError: String?
+    private(set) var serviceDiagnosis: ServiceDiagnosis?
+    private(set) var serviceHealth: ServiceHealth?
     var toast: Toast?
     var popoverOpen = false
+    /// Bumped when an app preference changes so the icon re-renders (Preferences itself is not observable).
+    var prefsVersion = 0
 
     let prefs = Preferences.shared
     private var client: ProxyClient
@@ -252,6 +259,7 @@ final class AppStore {
                 showToast(.ok, "\(label) applied")
             }
             if case .json(let path, _, _) = change, path.first == "proxy" { reloadEndpoint() }
+            loadConfigRoot()
             await poll()
             return outcome
         } catch let e as CLIError {
@@ -285,6 +293,63 @@ final class AppStore {
             showToast(.info, "Restarting the proxy…")
         }
     }
+
+    // MARK: - config document & service health (settings screens)
+
+    func loadConfigRoot() {
+        do {
+            configRoot = try configFile.load().root
+            configError = nil
+        } catch let e as ConfigError {
+            configError = "\(e)"
+        } catch {
+            configError = error.localizedDescription
+        }
+    }
+
+    func configValue(_ path: [String]) -> JSON {
+        configRoot.map { ConfigFile.value($0, path: path) } ?? .null
+    }
+
+    func refreshServiceHealth() async {
+        let uid = getuid()
+        let plist = ProxyLocator.launchAgentPath()
+        let installed = FileManager.default.fileExists(atPath: plist.path)
+        let env = ProcessInfo.processInfo.environment
+        async let print = try? CLIRunner.execute(executable: URL(fileURLWithPath: "/bin/launchctl"), arguments: ["print", "gui/\(uid)/\(ProxyLocator.launchAgentLabel)"], environment: env, timeout: 10)
+        async let lsof = try? CLIRunner.execute(executable: URL(fileURLWithPath: "/usr/sbin/lsof"), arguments: ["-nP", "-iTCP:\(endpoint.port)", "-sTCP:LISTEN", "-Fpc"], environment: env, timeout: 10)
+        let (p, l) = await (print, lsof)
+        let health = ServiceHealth.parse(launchctlPrint: (p?.succeeded ?? false) ? p?.stdout : nil, installed: installed)
+        let owner = l.flatMap { $0.succeeded ? PortOwner.parse(lsofFields: $0.stdout) : nil }
+        serviceHealth = health
+        serviceDiagnosis = ServiceDiagnosis.diagnose(health: health, portOwner: owner)
+    }
+
+    /// `teamclaude service install|uninstall` through the CLI, then re-diagnose.
+    func service(_ verb: String) async {
+        do {
+            let r = try await runner.run(["service", verb], timeout: 30)
+            if r.succeeded { showToast(.ok, "Service \(verb) done") } else { showToast(.error, "service \(verb): \(r.failureMessage)") }
+        } catch let e as CLIError {
+            showToast(.error, e.message)
+        } catch {
+            showToast(.error, error.localizedDescription)
+        }
+        await resolveCLI()
+        await refreshServiceHealth()
+        await poll()
+    }
+
+    /// Send SIGTERM to the process holding the port (a foreground `teamclaude server`), then kickstart the agent.
+    func quitPortOwnerAndRestart(pid: Int) async {
+        kill(pid_t(pid), SIGTERM)
+        try? await Task.sleep(for: .seconds(2))
+        await restartService()
+        try? await Task.sleep(for: .seconds(3))
+        await refreshServiceHealth()
+    }
+
+    func clearRestartPending() { restartPending.removeAll() }
 
     func showToast(_ kind: Toast.Kind, _ text: String) {
         toast = Toast(kind: kind, text: text, at: Date())

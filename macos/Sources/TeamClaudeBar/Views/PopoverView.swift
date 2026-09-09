@@ -75,12 +75,9 @@ struct PopoverView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Text(store.status?.currentAccount.map(store.displayName) ?? "No current account").font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
-            }
+            Text(store.status?.currentAccount.map(store.displayName) ?? "No current account").font(.system(size: 13, weight: .semibold)).lineLimit(1)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
         .help("Switch the current account")
     }
 
@@ -328,7 +325,8 @@ struct AccountRow: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
                 Image(systemName: "arrowtriangle.right.fill").font(.system(size: 8)).foregroundStyle(isCurrent ? Color.accentColor : Color.clear)
-                Text(store.compactName(account.name)).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle).layoutPriority(1)
+                Text(store.compactName(account.name)).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle)
+                    .frame(minWidth: 64, alignment: .leading).layoutPriority(2)
                     .help(account.name + (account.orgName.map { " · \($0)" } ?? ""))
                 Chip(text: Derived.tierBadge(tier)).fixedSize()
                 Chip(text: statusText, color: statusColor).fixedSize()

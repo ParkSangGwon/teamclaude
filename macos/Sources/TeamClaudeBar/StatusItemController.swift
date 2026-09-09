@@ -45,6 +45,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func render() {
+        _ = store.prefsVersion
         let model = store.iconModel
         let style = store.prefs.iconStyle
         let mono = store.prefs.monochrome
@@ -78,6 +79,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
+
+    var popoverWindowNumber: Int? { popover.contentViewController?.view.window?.windowNumber }
 
     func closePopover() {
         popover.performClose(nil)
