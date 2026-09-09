@@ -48,6 +48,7 @@ teamclaude disable <name>    # pause an account without removing it
 teamclaude priority <name> 1 # rotation order, lower = preferred
 teamclaude alias --install   # make plain `claude` go through the proxy
 teamclaude help              # everything else
+make -C macos app            # macOS menu bar app (see docs/menubar.md)
 ```
 
 Full reference: [docs/usage.md](docs/usage.md).
@@ -78,6 +79,7 @@ Step-by-step lifecycle: [docs/routing.md](docs/routing.md#request-lifecycle).
 | [Quota](docs/quota.md) | Quota probe, keep-warm, holding on exhaustion |
 | [Configuration](docs/configuration.md) | Config format, every field, environment variables, network tuning |
 | [Proxy modes](docs/proxy-modes.md) | MITM forward proxy, sx.org residential egress |
+| [Menu bar app](docs/menubar.md) | macOS menu bar client: current account, quota bars, switch, settings, service health |
 | [Compliance](docs/compliance.md) | Terms of service notes |
 
 ## Security

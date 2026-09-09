@@ -58,19 +58,41 @@ jobs:
       - name: Smoke test the CLI wrapper
         run: nix run --no-update-lock-file .#teamclaude -- help
 
+  # The macOS menu bar client under macos/ (SwiftPM, no dependencies). Built
+  # unconditionally rather than path-filtered so the required `test` check
+  # never reads as "skipped" on a PR that only touches src/.
+  macos:
+    name: macos app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build -c release --package-path macos
+
+      - name: Test
+        run: swift test --package-path macos
+
+      - name: Bundle smoke
+        run: make -C macos app && plutil -lint "macos/dist/TeamClaude Bar.app/Contents/Info.plist"
+
   # Single stable status check for branch protection to require, independent of
   # how many implementation jobs run. Always runs and fails explicitly if any
   # required job did not succeed (so it is never silently "skipped").
   test:
     name: test
-    needs: [node, nix]
+    needs: [node, nix, macos]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
-        if: needs.node.result != 'success' || needs.nix.result != 'success'
+        if: needs.node.result != 'success' || needs.nix.result != 'success' || needs.macos.result != 'success'
         run: |
           echo "Node job result: ${{ needs.node.result }}"
           echo "Nix package result: ${{ needs.nix.result }}"
+          echo "macOS app result: ${{ needs.macos.result }}"
           exit 1
       - run: echo "All required jobs passed"

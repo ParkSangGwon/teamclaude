@@ -1,0 +1,109 @@
+{
+  "proxy": {
+    "port": 3456,
+    "apiKey": "tc-change-me-to-a-secret",
+    "clientKeys": [
+      {
+        "name": "alice",
+        "key": "tc-alice-own-secret"
+      },
+      {
+        "name": "bob",
+        "key": "tc-bob-own-secret"
+      }
+    ],
+    "usageDimensions": [
+      {
+        "name": "project",
+        "header": "x-teamclaude-project"
+      },
+      {
+        "name": "ref",
+        "header": "x-teamclaude-ref"
+      }
+    ],
+    "sessionDetail": false,
+    "x-future-proxy": [
+      "keep",
+      "me"
+    ]
+  },
+  "upstream": "https://api.anthropic.com",
+  "switchThreshold": {
+    "unified5h": 0.98,
+    "unified7dFable": 0.9
+  },
+  "distributeSessions": false,
+  "quotaProbeSeconds": 0,
+  "autoUpdate": true,
+  "expiryRouting": {
+    "enabled": false,
+    "tolerance": 1.5,
+    "preempt": true
+  },
+  "accounts": [
+    {
+      "name": "primary-max",
+      "type": "oauth",
+      "importFrom": "~/.claude/.credentials.json",
+      "id": "acct-1",
+      "x-future-account": true
+    },
+    {
+      "name": "user@example.com (Acme)",
+      "type": "oauth",
+      "accountUuid": "optional-account-uuid",
+      "orgUuid": "optional-organization-uuid",
+      "orgName": "Acme",
+      "priority": 0,
+      "accessToken": "sk-ant-oat01-your-access-token",
+      "refreshToken": "sk-ant-ort01-your-refresh-token",
+      "id": "acct-2",
+      "x-future-account": true
+    },
+    {
+      "name": "codex@example.com",
+      "type": "oauth",
+      "provider": "codex",
+      "priority": 0,
+      "id": "acct-3",
+      "x-future-account": true
+    },
+    {
+      "name": "api-fallback",
+      "type": "apikey",
+      "priority": 10,
+      "disabled": false,
+      "apiKey": "sk-ant-api03-your-api-key",
+      "id": "acct-4",
+      "x-future-account": true
+    }
+  ],
+  "routes": [
+    {
+      "name": "fable",
+      "match": [
+        "*fable*"
+      ],
+      "accounts": [
+        "primary-max"
+      ],
+      "color": "magenta"
+    }
+  ],
+  "upstreamProxy": "http://proxy.corp.example:3128",
+  "egress": {
+    "pin": "auto",
+    "checkUrl": "https://api.ipify.org",
+    "ttlSeconds": 30,
+    "holdSeconds": 120
+  },
+  "x-future": {
+    "a": 1
+  },
+  "warmupSchedule": {
+    "resetTime": "09:00",
+    "timezone": "UTC"
+  },
+  "holdSeconds": 0
+}

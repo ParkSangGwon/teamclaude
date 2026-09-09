@@ -1,4 +1,6 @@
 export default [
+  // The macOS app under macos/ is Swift; nothing there is for eslint.
+  { ignores: ['macos/**'] },
   {
     languageOptions: {
       ecmaVersion: 2022,

@@ -2,3 +2,6 @@ node_modules
 config.json
 *.log
 package-lock.json
+macos/.build/
+macos/.swiftpm/
+macos/dist/

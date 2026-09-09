@@ -1,0 +1,34 @@
+{
+  "blockedModels": [],
+  "clients": {},
+  "usageDimensions": {},
+  "server": {
+    "startedAt": "2026-09-06T17:02:37.537Z",
+    "uptimeSeconds": 120,
+    "port": 3456,
+    "upstream": "https://api.anthropic.com"
+  },
+  "currentAccount": null,
+  "defaultTarget": null,
+  "switchThreshold": 0.98,
+  "switchThresholds": null,
+  "expiryRouting": {
+    "enabled": false,
+    "tolerance": 1.5,
+    "preempt": true
+  },
+  "routes": [],
+  "sessions": {
+    "known": 2,
+    "active": 1,
+    "perAccount": {
+      "0": 1
+    },
+    "items": [],
+    "distribute": false,
+    "mode": "off",
+    "draining": 0,
+    "starvedMax": 0
+  },
+  "accounts": []
+}

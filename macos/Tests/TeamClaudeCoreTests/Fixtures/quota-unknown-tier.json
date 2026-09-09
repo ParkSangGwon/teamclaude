@@ -1,0 +1,65 @@
+{
+  "accounts": [
+    {
+      "name": "carol@example.com",
+      "type": "oauth",
+      "disabled": false,
+      "status": "active",
+      "tier": {
+        "rateLimitTier": "default_claude_ultra_99x",
+        "seatTier": null,
+        "weight": null
+      },
+      "buckets": {
+        "fiveHour": {
+          "utilization": null,
+          "remaining": null,
+          "resetAt": null,
+          "source": null
+        },
+        "weeklyShared": {
+          "utilization": 0.4,
+          "remaining": 0.6,
+          "resetAt": 4102444800000,
+          "source": "unified7d"
+        },
+        "weeklySonnet": {
+          "utilization": 0.4,
+          "remaining": 0.6,
+          "resetAt": 4102444800000,
+          "source": "unified7d"
+        },
+        "weeklyFable": null
+      }
+    },
+    {
+      "name": "api-fallback",
+      "type": "apikey",
+      "disabled": true,
+      "status": null,
+      "tier": null,
+      "buckets": {
+        "tokens": {
+          "utilization": 0.25,
+          "remaining": 0.75,
+          "resetAt": null,
+          "source": "tokens",
+          "limit": 1000000,
+          "remainingAmount": 750000
+        }
+      }
+    }
+  ],
+  "unknownTiers": [
+    {
+      "name": "carol@example.com",
+      "rateLimitTier": "default_claude_ultra_99x",
+      "seatTier": null
+    }
+  ],
+  "warmup": {
+    "enabled": true,
+    "mode": "interval",
+    "intervalSeconds": 600
+  }
+}

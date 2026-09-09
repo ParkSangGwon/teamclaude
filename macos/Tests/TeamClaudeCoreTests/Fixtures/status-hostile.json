@@ -1,0 +1,87 @@
+{
+  "x-unknown-top-level": {
+    "nested": [
+      1,
+      2,
+      3
+    ]
+  },
+  "blockedModels": "not-an-array",
+  "server": "not-an-object",
+  "probe": {
+    "enabled": "yes",
+    "intervalSeconds": "300",
+    "running": null,
+    "lastRunStartedAt": "not-a-date",
+    "accounts": "nope"
+  },
+  "warm": null,
+  "currentAccount": "xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085",
+  "defaultTarget": null,
+  "switchThreshold": "oops",
+  "switchThresholds": {
+    "unified7d": "0.9",
+    "unified5h": 0.95,
+    "unified7dFable": null
+  },
+  "routes": {
+    "not": "an array"
+  },
+  "sessions": {
+    "known": "9",
+    "active": null,
+    "perAccount": {
+      "zero": 1,
+      "1": "two"
+    },
+    "distribute": "even",
+    "mode": null,
+    "draining": "1",
+    "starvedMax": null
+  },
+  "accounts": [
+    {
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085xxxxxxxxxxxxxxxxxxxxxxxxx\u0001\n\t\u007f\u0085",
+      "type": null,
+      "orgName": null,
+      "priority": "high",
+      "disabled": "false",
+      "maxUsage": "lots",
+      "status": null,
+      "unavailable": "future-reason",
+      "sessions": "1",
+      "quota": {
+        "unified5h": "0.5",
+        "unified7d": null,
+        "unified5hReset": "soon",
+        "unified7dReset": null,
+        "scopedWeekly": {
+          "fable": null,
+          "opus": {
+            "utilization": "0.1",
+            "resetAt": null
+          }
+        },
+        "spend": null,
+        "backend": {
+          "label": null,
+          "text": null,
+          "utilization": "x",
+          "at": null
+        }
+      },
+      "usage": "none",
+      "rateLimitedUntil": 12,
+      "pausedUntil": "",
+      "entitlementDeniedUntil": null,
+      "unknownAccountKey": [
+        null
+      ]
+    },
+    {
+      "name": null,
+      "quota": null,
+      "usage": null
+    }
+  ]
+}

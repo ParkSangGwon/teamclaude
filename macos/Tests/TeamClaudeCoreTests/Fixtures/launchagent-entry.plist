@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.karpeleslab.teamclaude</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/ted/.nvm/versions/node/v24.13.1/bin/node</string>
+        <string>/Users/ted/.nvm/versions/node/v24.13.1/lib/node_modules/teamclaude/src/index.js</string>
+        <string>server</string>
+        <string>--headless</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/ted/.nvm/versions/node/v24.13.1/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/ted</string>
+        <key>TEAMCLAUDE_CONFIG</key>
+        <string>/Users/ted/.config/teamclaude-test.json</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

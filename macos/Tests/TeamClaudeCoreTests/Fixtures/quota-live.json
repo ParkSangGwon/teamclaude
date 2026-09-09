@@ -1,0 +1,121 @@
+{
+  "accounts": [
+    {
+      "name": "alice@example.com",
+      "type": "oauth",
+      "disabled": false,
+      "status": "active",
+      "tier": {
+        "rateLimitTier": "default_claude_max_20x",
+        "seatTier": null,
+        "weight": 20
+      },
+      "buckets": {
+        "fiveHour": {
+          "utilization": 0.06,
+          "remaining": 0.94,
+          "resetAt": 1788984600000,
+          "source": "unified5h"
+        },
+        "weeklyShared": {
+          "utilization": 0.4,
+          "remaining": 0.6,
+          "resetAt": 1789297200000,
+          "source": "unified7d"
+        },
+        "weeklySonnet": {
+          "utilization": 0.4,
+          "remaining": 0.6,
+          "resetAt": 1789297200000,
+          "source": "unified7d"
+        },
+        "weeklyFable": {
+          "utilization": 0.14,
+          "remaining": 0.86,
+          "resetAt": 1789297200348,
+          "source": "unified7dFable"
+        }
+      }
+    },
+    {
+      "name": "bob@example.com",
+      "type": "oauth",
+      "disabled": false,
+      "status": "active",
+      "tier": {
+        "rateLimitTier": "default_claude_max_20x",
+        "seatTier": null,
+        "weight": 20
+      },
+      "buckets": {
+        "fiveHour": {
+          "utilization": 0.15,
+          "remaining": 0.85,
+          "resetAt": 1788970200000,
+          "source": "unified5h"
+        },
+        "weeklyShared": {
+          "utilization": 0.36,
+          "remaining": 0.64,
+          "resetAt": 1789027200000,
+          "source": "unified7d"
+        },
+        "weeklySonnet": {
+          "utilization": 0.36,
+          "remaining": 0.64,
+          "resetAt": 1789027200000,
+          "source": "unified7d"
+        },
+        "weeklyFable": {
+          "utilization": 0.08,
+          "remaining": 0.92,
+          "resetAt": 1789027200000,
+          "source": "unified7dFable"
+        }
+      }
+    }
+  ],
+  "aggregate": {
+    "fiveHour": {
+      "capacityWeight": 40,
+      "usedWeight": 4.2,
+      "remainingWeight": 35.8,
+      "utilization": 0.105,
+      "remaining": 0.895,
+      "knownAccounts": 2,
+      "nextResetAt": 1788970200000
+    },
+    "weeklyShared": {
+      "capacityWeight": 40,
+      "usedWeight": 15.2,
+      "remainingWeight": 24.8,
+      "utilization": 0.38,
+      "remaining": 0.62,
+      "knownAccounts": 2,
+      "nextResetAt": 1789027200000
+    },
+    "weeklySonnet": {
+      "capacityWeight": 40,
+      "usedWeight": 15.2,
+      "remainingWeight": 24.8,
+      "utilization": 0.38,
+      "remaining": 0.62,
+      "knownAccounts": 2,
+      "nextResetAt": 1789027200000
+    },
+    "weeklyFable": {
+      "capacityWeight": 40,
+      "usedWeight": 4.4,
+      "remainingWeight": 35.6,
+      "utilization": 0.11,
+      "remaining": 0.89,
+      "knownAccounts": 2,
+      "nextResetAt": 1789027200000
+    }
+  },
+  "unknownTiers": [],
+  "warmup": {
+    "enabled": false,
+    "mode": "off"
+  }
+}

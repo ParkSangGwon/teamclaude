@@ -1,0 +1,132 @@
+{
+  "blockedModels": [],
+  "clients": {},
+  "usageDimensions": {},
+  "server": {
+    "startedAt": "2026-09-06T17:02:37.537Z",
+    "uptimeSeconds": 120,
+    "port": 3456,
+    "upstream": "https://api.anthropic.com"
+  },
+  "currentAccount": "alice@example.com",
+  "defaultTarget": "alice@example.com",
+  "switchThreshold": 0.98,
+  "switchThresholds": null,
+  "expiryRouting": {
+    "enabled": false,
+    "tolerance": 1.5,
+    "preempt": true
+  },
+  "routes": [],
+  "sessions": {
+    "known": 2,
+    "active": 1,
+    "perAccount": {
+      "0": 1
+    },
+    "items": [],
+    "distribute": false,
+    "mode": "off",
+    "draining": 0,
+    "starvedMax": 0
+  },
+  "accounts": [
+    {
+      "name": "alice@example.com",
+      "type": "oauth",
+      "orgName": "Example Org",
+      "priority": 0,
+      "disabled": false,
+      "maxUsage": null,
+      "status": "active",
+      "unavailable": null,
+      "sessions": 1,
+      "quota": {
+        "tokensLimit": null,
+        "tokensRemaining": null,
+        "requestsLimit": null,
+        "requestsRemaining": null,
+        "unified5h": 0.42,
+        "unified7d": 0.61,
+        "unified7dSonnet": null,
+        "unified7dFable": 0.88,
+        "unified5hReset": 4102444800000,
+        "unified7dReset": 4102444800000,
+        "unified7dSonnetReset": null,
+        "unified7dFableReset": 4102444800000,
+        "unifiedStatus": "allowed",
+        "scopedWeekly": {
+          "fable": {
+            "utilization": 0.88,
+            "resetAt": 4102444800000
+          }
+        },
+        "spend": {
+          "enabled": false,
+          "usedMinor": 0,
+          "limitMinor": null,
+          "currency": "USD",
+          "exponent": 2
+        },
+        "resetsAt": null
+      },
+      "usage": {
+        "totalInputTokens": 0,
+        "totalOutputTokens": 0,
+        "totalCacheReadTokens": 0,
+        "totalCacheCreationTokens": 0,
+        "totalRequests": 0,
+        "lastUsed": null
+      },
+      "rateLimitedUntil": null,
+      "pausedUntil": null,
+      "entitlementDeniedUntil": null
+    },
+    {
+      "name": "bob@example.com",
+      "type": "oauth",
+      "orgName": "Example Org",
+      "priority": 0,
+      "disabled": false,
+      "maxUsage": null,
+      "status": "active",
+      "unavailable": "quota",
+      "sessions": 0,
+      "quota": {
+        "tokensLimit": null,
+        "tokensRemaining": null,
+        "requestsLimit": null,
+        "requestsRemaining": null,
+        "unified5h": 0.98,
+        "unified7d": 0.5,
+        "unified7dSonnet": null,
+        "unified7dFable": null,
+        "unified5hReset": 4102444800000,
+        "unified7dReset": 4102444800000,
+        "unified7dSonnetReset": null,
+        "unified7dFableReset": null,
+        "unifiedStatus": "allowed",
+        "scopedWeekly": {},
+        "spend": {
+          "enabled": false,
+          "usedMinor": 0,
+          "limitMinor": null,
+          "currency": "USD",
+          "exponent": 2
+        },
+        "resetsAt": null
+      },
+      "usage": {
+        "totalInputTokens": 0,
+        "totalOutputTokens": 0,
+        "totalCacheReadTokens": 0,
+        "totalCacheCreationTokens": 0,
+        "totalRequests": 0,
+        "lastUsed": null
+      },
+      "rateLimitedUntil": null,
+      "pausedUntil": null,
+      "entitlementDeniedUntil": null
+    }
+  ]
+}

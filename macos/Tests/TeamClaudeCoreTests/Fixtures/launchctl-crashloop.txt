@@ -1,0 +1,43 @@
+gui/501/com.karpeleslab.teamclaude = {
+    active count = 1
+    path = /Users/ted/Library/LaunchAgents/com.karpeleslab.teamclaude.plist
+    type = LaunchAgent
+    state = running
+
+    program = /usr/local/bin/node
+    arguments = {
+        /usr/local/bin/node
+        /usr/local/bin/teamclaude
+        server
+        --headless
+    }
+
+    stdout path = /Users/ted/Library/Logs/teamclaude.log
+    stderr path = /Users/ted/Library/Logs/teamclaude.log
+    default environment = {
+        PATH => /usr/bin:/bin:/usr/sbin:/sbin
+    }
+
+    environment = {
+        PATH => /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+        HOME => /Users/ted
+        XPC_SERVICE_NAME => com.karpeleslab.teamclaude
+    }
+
+    domain = gui/501 [100006]
+    minimum runtime = 10
+    exit timeout = 5
+    runs = 9212
+    pid = 81892
+    immediate reason = speculative
+    forks = 0
+    execs = 1
+    initialized = 1
+    trampolined = 1
+    started suspended = 0
+    proxy started suspended = 0
+    last exit code = 1
+
+    spawn type = daemon (3)
+    properties = keepalive | runatload | inferred program | system service | exponential throttling
+}

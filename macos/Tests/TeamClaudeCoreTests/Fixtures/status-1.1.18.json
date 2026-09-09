@@ -1,0 +1,614 @@
+{
+  "blockedModels": [],
+  "clients": {},
+  "usageDimensions": {
+    "project": {
+      "project-1": {
+        "requests": 1,
+        "inputTokens": 8,
+        "outputTokens": 4,
+        "lastUsed": "2026-09-06T16:50:55.070Z"
+      },
+      "project-2": {
+        "requests": 10,
+        "inputTokens": 18,
+        "outputTokens": 2863,
+        "lastUsed": "2026-09-06T17:20:21.046Z"
+      },
+      "project-3": {
+        "requests": 4,
+        "inputTokens": 7063,
+        "outputTokens": 652,
+        "lastUsed": "2026-09-08T07:10:40.668Z"
+      }
+    },
+    "ref": {
+      "ref-1": {
+        "requests": 1,
+        "inputTokens": 8,
+        "outputTokens": 4,
+        "lastUsed": "2026-09-06T16:50:55.070Z"
+      },
+      "ref-2": {
+        "requests": 10,
+        "inputTokens": 18,
+        "outputTokens": 2863,
+        "lastUsed": "2026-09-06T17:20:21.046Z"
+      }
+    }
+  },
+  "server": {
+    "startedAt": "2026-09-06T17:02:37.537Z",
+    "uptimeSeconds": 230355,
+    "port": 3456,
+    "upstream": "https://api.anthropic.com",
+    "eventLoop": {
+      "lastLagMs": 1,
+      "maxLagMs": 12,
+      "stallCount": 0,
+      "lastStallAt": null,
+      "warnLagMs": 250
+    }
+  },
+  "probe": {
+    "enabled": true,
+    "intervalSeconds": 300,
+    "running": false,
+    "lastRunStartedAt": "2026-09-09T08:58:09.273Z",
+    "lastRunFinishedAt": "2026-09-09T08:58:09.760Z",
+    "nextRunAt": "2026-09-09T09:03:09.273Z",
+    "accounts": [
+      {
+        "name": "alice@example.com",
+        "status": "ok",
+        "lastProbedAt": "2026-09-09T08:58:09.760Z",
+        "startedAt": "2026-09-09T08:58:09.273Z",
+        "durationMs": 487,
+        "error": null
+      },
+      {
+        "name": "bob@example.com",
+        "status": "ok",
+        "lastProbedAt": "2026-09-09T08:58:09.707Z",
+        "startedAt": "2026-09-09T08:58:09.273Z",
+        "durationMs": 434,
+        "error": null
+      }
+    ]
+  },
+  "warm": {
+    "enabled": false,
+    "mode": "off",
+    "intervalSeconds": 0,
+    "running": false,
+    "lastRunStartedAt": null,
+    "lastRunFinishedAt": null,
+    "nextRunAt": null,
+    "accounts": [
+      {
+        "name": "alice@example.com",
+        "status": "never",
+        "lastWarmedAt": null,
+        "startedAt": null,
+        "durationMs": null,
+        "error": null
+      },
+      {
+        "name": "bob@example.com",
+        "status": "never",
+        "lastWarmedAt": null,
+        "startedAt": null,
+        "durationMs": null,
+        "error": null
+      }
+    ]
+  },
+  "currentAccount": "bob@example.com",
+  "defaultTarget": "bob@example.com",
+  "switchThreshold": 0.98,
+  "switchThresholds": {
+    "unified7dFable": 0.9
+  },
+  "routes": [
+    {
+      "name": "fable",
+      "match": [
+        "*fable*"
+      ],
+      "bucket": null,
+      "color": null,
+      "autocreated": true,
+      "pinned": null,
+      "accounts": [
+        {
+          "name": "alice@example.com",
+          "eligible": true
+        },
+        {
+          "name": "bob@example.com",
+          "eligible": true
+        }
+      ],
+      "target": "bob@example.com"
+    }
+  ],
+  "sessions": {
+    "known": 9,
+    "active": 2,
+    "perAccount": {
+      "0": 1,
+      "1": 1
+    },
+    "tokens": {
+      "cacheRead": 1092240160,
+      "cacheCreation": 18449450,
+      "input": 15681740,
+      "output": 4738395,
+      "reports": 6985,
+      "activeContext": 1051305,
+      "byBucket": {
+        "unified7d": {
+          "cacheRead": 951566724,
+          "cacheCreation": 14311083,
+          "input": 15164176,
+          "output": 4113028,
+          "reports": 5420,
+          "activeContext": 869763
+        },
+        "unified7dSonnet": {
+          "cacheRead": 140061950,
+          "cacheCreation": 3995500,
+          "input": 503436,
+          "output": 611199,
+          "reports": 1554,
+          "activeContext": 75766
+        },
+        "unified7dFable": {
+          "cacheRead": 611486,
+          "cacheCreation": 142867,
+          "input": 14128,
+          "output": 14168,
+          "reports": 11,
+          "activeContext": 105776
+        }
+      }
+    },
+    "items": [
+      {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "active": true,
+        "inFlight": 5,
+        "requests": 58,
+        "firstSeen": 1788944324050,
+        "lastSeen": 1788944512424,
+        "client": null,
+        "dimensions": null,
+        "pins": {
+          "unified7d": 0,
+          "unified7dFable": 0
+        },
+        "tokens": {
+          "unified7d": {
+            "cacheRead": 1687053,
+            "cacheCreation": 111378,
+            "input": 140093,
+            "output": 15129,
+            "context": 110061,
+            "reports": 42
+          },
+          "unified7dFable": {
+            "cacheRead": 611486,
+            "cacheCreation": 142867,
+            "input": 14128,
+            "output": 14168,
+            "context": 105776,
+            "reports": 11
+          }
+        }
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000002",
+        "active": true,
+        "inFlight": 0,
+        "requests": 886,
+        "firstSeen": 1788930396725,
+        "lastSeen": 1788944449266,
+        "client": null,
+        "dimensions": null,
+        "pins": {
+          "unified7d": 1,
+          "unified7dSonnet": 1
+        },
+        "tokens": {
+          "unified7d": {
+            "cacheRead": 199334863,
+            "cacheCreation": 1407920,
+            "input": 190621,
+            "output": 537787,
+            "context": 759702,
+            "reports": 591
+          },
+          "unified7dSonnet": {
+            "cacheRead": 25937207,
+            "cacheCreation": 380607,
+            "input": 46333,
+            "output": 88870,
+            "context": 75766,
+            "reports": 292
+          }
+        }
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000003",
+        "active": false,
+        "inFlight": 0,
+        "requests": 3804,
+        "firstSeen": 1788930287479,
+        "lastSeen": 1788944137349,
+        "client": null,
+        "dimensions": null,
+        "pins": {
+          "unified7d": 1,
+          "unified7dSonnet": 1
+        },
+        "tokens": {
+          "unified7d": {
+            "cacheRead": 259852579,
+            "cacheCreation": 6932042,
+            "input": 14374065,
+            "output": 1914172,
+            "context": 736073,
+            "reports": 2991
+          },
+          "unified7dSonnet": {
+            "cacheRead": 71187283,
+            "cacheCreation": 2293877,
+            "input": 352058,
+            "output": 403427,
+            "context": 365394,
+            "reports": 802
+          }
+        }
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000004",
+        "active": false,
+        "inFlight": 0,
+        "requests": 565,
+        "firstSeen": 1788931110488,
+        "lastSeen": 1788944090918,
+        "client": null,
+        "dimensions": null,
+        "pins": {
+          "unified7d": 0,
+          "unified7dSonnet": 0
+        },
+        "tokens": {
+          "unified7d": {
+            "cacheRead": 132371127,
+            "cacheCreation": 2153511,
+            "input": 120533,
+            "output": 423730,
+            "context": 691058,
+            "reports": 472
+          },
+          "unified7dSonnet": {
+            "cacheRead": 5587304,
+            "cacheCreation": 557560,
+            "input": 798,
+            "output": 23035,
+            "context": 298487,
+            "reports": 91
+          }
+        }
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000005",
+        "active": false,
+        "inFlight": 0,
+        "requests": 13,
+        "firstSeen": 1788943992607,
+        "lastSeen": 1788944086465,
+        "client": null,
+        "dimensions": null,
+        "pins": {
+          "unified7d": 1
+        },
+        "tokens": {
+          "unified7d": {
+            "cacheRead": 550711,
+            "cacheCreation": 41204,
+            "input": 2392,
+            "output": 2546,
+            "context": 4989,
+            "reports": 13
+          }
+        }
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000006",
+        "active": false,
+        "inFlight": 0,
+        "requests": 646,
+        "firstSeen": 1788930323875,
+        "lastSeen": 1788943986742,
+        "client": null,
+        "dimensions": null,
+        "pins": {
+          "unified7d": 0,
+          "unified7dSonnet": 0
+        },
+        "tokens": {
+          "unified7d": {
+            "cacheRead": 132571259,
+            "cacheCreation": 1075808,
+            "input": 92424,
+            "output": 365050,
+            "context": 654436,
+            "reports": 440
+          },
+          "unified7dSonnet": {
+            "cacheRead": 19875445,
+            "cacheCreation": 356410,
+            "input": 89295,
+            "output": 92585,
+            "context": 156312,
+            "reports": 205
+          }
+        }
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000007",
+        "active": false,
+        "inFlight": 0,
+        "requests": 508,
+        "firstSeen": 1788932820711,
+        "lastSeen": 1788943943593,
+        "client": null,
+        "dimensions": null,
+        "pins": {
+          "unified7d": 0,
+          "unified7dSonnet": 0
+        },
+        "tokens": {
+          "unified7d": {
+            "cacheRead": 83527607,
+            "cacheCreation": 559893,
+            "input": 33061,
+            "output": 223942,
+            "context": 5129,
+            "reports": 343
+          },
+          "unified7dSonnet": {
+            "cacheRead": 16977480,
+            "cacheCreation": 220646,
+            "input": 14682,
+            "output": 3255,
+            "context": 171759,
+            "reports": 161
+          }
+        }
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000008",
+        "active": false,
+        "inFlight": 0,
+        "requests": 269,
+        "firstSeen": 1788935523108,
+        "lastSeen": 1788943744890,
+        "client": null,
+        "dimensions": null,
+        "pins": {
+          "unified7d": 1
+        },
+        "tokens": {
+          "unified7d": {
+            "cacheRead": 65788434,
+            "cacheCreation": 887437,
+            "input": 136058,
+            "output": 289041,
+            "context": 499586,
+            "reports": 268
+          }
+        }
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000009",
+        "active": false,
+        "inFlight": 0,
+        "requests": 266,
+        "firstSeen": 1788932822381,
+        "lastSeen": 1788941838020,
+        "client": null,
+        "dimensions": null,
+        "pins": {
+          "unified7d": 0,
+          "unified7dSonnet": 0
+        },
+        "tokens": {
+          "unified7d": {
+            "cacheRead": 75883091,
+            "cacheCreation": 1141890,
+            "input": 74929,
+            "output": 341631,
+            "context": 585524,
+            "reports": 260
+          },
+          "unified7dSonnet": {
+            "cacheRead": 497231,
+            "cacheCreation": 186400,
+            "input": 270,
+            "output": 27,
+            "context": 228635,
+            "reports": 3
+          }
+        }
+      }
+    ],
+    "distribute": false,
+    "draining": 0,
+    "mode": "off"
+  },
+  "accounts": [
+    {
+      "name": "alice@example.com",
+      "type": "oauth",
+      "orgName": "Example Org",
+      "priority": 0,
+      "disabled": false,
+      "maxUsage": null,
+      "status": "active",
+      "unavailable": null,
+      "sessions": 1,
+      "quota": {
+        "tokensLimit": null,
+        "tokensRemaining": null,
+        "requestsLimit": null,
+        "requestsRemaining": null,
+        "unified5h": 0.37,
+        "unified7d": 0.34,
+        "unified7dSonnet": null,
+        "unified7dFable": 0.05,
+        "unified5hReset": 1788948600000,
+        "unified7dReset": 1789297200000,
+        "unified7dSonnetReset": null,
+        "unified7dFableReset": 1789297200000,
+        "unified7dSonnetSeenAt": null,
+        "unified7dFableSeenAt": 1788944504399,
+        "unifiedStatus": "allowed",
+        "unifiedStatusSeenAt": 1788944512251,
+        "scopedWeekly": {
+          "fable": {
+            "utilization": 0.05,
+            "resetAt": 1789297199660
+          }
+        },
+        "spend": {
+          "enabled": false,
+          "usedMinor": 0,
+          "limitMinor": null,
+          "currency": "USD",
+          "exponent": 2,
+          "userDisabled": true,
+          "disabledReason": null
+        },
+        "resetsAt": null
+      },
+      "usage": {
+        "totalInputTokens": 1087374,
+        "totalOutputTokens": 3041249,
+        "totalCacheReadTokens": 816898709,
+        "totalCacheCreationTokens": 18529981,
+        "byBucket": {
+          "unified7d": {
+            "cacheReadTokens": 767795013,
+            "cacheCreationTokens": 16375330
+          },
+          "unified7dSonnet": {
+            "cacheReadTokens": 48492210,
+            "cacheCreationTokens": 2011784
+          },
+          "unified7dFable": {
+            "cacheReadTokens": 611486,
+            "cacheCreationTokens": 142867
+          }
+        },
+        "totalRequests": 3619,
+        "lastUsed": "2026-09-09T09:01:52.251Z"
+      },
+      "rateLimitedUntil": null,
+      "pausedUntil": null,
+      "entitlementDeniedUntil": null,
+      "pressure": 0.42,
+      "sessionsByBucket": {
+        "unified7d": 1
+      }
+    },
+    {
+      "name": "bob@example.com",
+      "type": "oauth",
+      "orgName": "Example Org",
+      "priority": 0,
+      "disabled": false,
+      "maxUsage": null,
+      "status": "active",
+      "unavailable": null,
+      "sessions": 1,
+      "quota": {
+        "tokensLimit": null,
+        "tokensRemaining": null,
+        "requestsLimit": null,
+        "requestsRemaining": null,
+        "unified5h": 0.29,
+        "unified7d": 0.34,
+        "unified7dSonnet": null,
+        "unified7dFable": 0.06,
+        "unified5hReset": 1788951600000,
+        "unified7dReset": 1789027200000,
+        "unified7dSonnetReset": null,
+        "unified7dFableReset": 1789027199606,
+        "unified7dSonnetSeenAt": null,
+        "unified7dFableSeenAt": 1788944289707,
+        "unifiedStatus": "allowed",
+        "unifiedStatusSeenAt": 1788944436546,
+        "scopedWeekly": {
+          "fable": {
+            "utilization": 0.06,
+            "resetAt": 1789027199606
+          }
+        },
+        "spend": {
+          "enabled": false,
+          "usedMinor": 0,
+          "limitMinor": null,
+          "currency": "USD",
+          "exponent": 2,
+          "userDisabled": false,
+          "disabledReason": null
+        },
+        "resetsAt": null
+      },
+      "usage": {
+        "totalInputTokens": 13198487,
+        "totalOutputTokens": 5326748,
+        "totalCacheReadTokens": 1090908213,
+        "totalCacheCreationTokens": 28564346,
+        "byBucket": {
+          "unified7d": {
+            "cacheReadTokens": 914272514,
+            "cacheCreationTokens": 22031935
+          },
+          "unified7dSonnet": {
+            "cacheReadTokens": 171065643,
+            "cacheCreationTokens": 6077566
+          },
+          "unified7dFable": {
+            "cacheReadTokens": 5570056,
+            "cacheCreationTokens": 454845
+          }
+        },
+        "totalRequests": 19079,
+        "lastUsed": "2026-09-09T09:01:44.043Z"
+      },
+      "rateLimitedUntil": null,
+      "pausedUntil": null,
+      "entitlementDeniedUntil": null,
+      "pressure": null,
+      "sessionsByBucket": null
+    }
+  ],
+  "expiryRouting": {
+    "enabled": false,
+    "tolerance": 1.5,
+    "preempt": true
+  },
+  "adaptive": {},
+  "upstreamPool": {
+    "active": 0,
+    "queued": 0,
+    "origins": 1,
+    "perOriginLimit": 64,
+    "maxQueue": 1024,
+    "queueTimeoutMs": 30000
+  }
+}
