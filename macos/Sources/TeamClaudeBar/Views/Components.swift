@@ -25,8 +25,9 @@ struct SectionHeader: View {
         HStack {
             Text(title.uppercased()).font(.system(size: 10, weight: .bold)).tracking(0.8).foregroundStyle(.secondary)
             Spacer()
-            if let trailing { Text(trailing).font(.system(size: 10)).foregroundStyle(.secondary) }
+            if let trailing { Text(trailing).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
         }
+        .frame(maxWidth: .infinity)
     }
 }
 

@@ -56,7 +56,7 @@ struct AccountCard: View {
             HStack(spacing: 8) {
                 Image(systemName: "arrowtriangle.right.fill").font(.system(size: 8)).foregroundStyle(isCurrent ? Color.accentColor : Color.clear)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(store.displayName(name)).font(.system(size: 13, weight: .semibold))
+                    Text(store.displayName(name)).font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                     Text([row["orgName"].string, row["type"].string, row["provider"].string, row["importFrom"].string.map { "from \($0)" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Chip(text: Derived.tierBadge(tier))
@@ -73,14 +73,14 @@ struct AccountCard: View {
                 Button(expanded ? "Less" : "More") { toggle() }.controlSize(.small)
             }
             HStack(spacing: 12) {
-                Toggle("Enabled", isOn: Binding(get: { row["disabled"].bool != true }, set: { on in Task { await store.apply(.enabled(account: name, org: nil, enabled: on), label: on ? "Enable \(name)" : "Disable \(name)") } })).toggleStyle(.switch).controlSize(.small)
+                Toggle("On", isOn: Binding(get: { row["disabled"].bool != true }, set: { on in Task { await store.apply(.enabled(account: name, org: nil, enabled: on), label: on ? "Enable \(name)" : "Disable \(name)") } })).toggleStyle(.switch).controlSize(.small)
                 HStack(spacing: 4) {
-                    Text("Priority").font(.system(size: 12))
+                    Text("Priority").font(.system(size: 12)).fixedSize()
                     TextField("0", text: $priorityText).textFieldStyle(.roundedBorder).frame(width: 50).multilineTextAlignment(.trailing).onSubmit(applyPriority)
-                    Button("Top") { Task { await store.apply(.priority(account: name, org: nil, value: .first), label: "Priority of \(name)") } }.controlSize(.mini)
-                    Button("Bottom") { Task { await store.apply(.priority(account: name, org: nil, value: .last), label: "Priority of \(name)") } }.controlSize(.mini)
+                    Button("Top") { Task { await store.apply(.priority(account: name, org: nil, value: .first), label: "Priority of \(name)") } }.controlSize(.mini).fixedSize()
+                    Button("Bottom") { Task { await store.apply(.priority(account: name, org: nil, value: .last), label: "Priority of \(name)") } }.controlSize(.mini).fixedSize()
                 }
-                if let live { Text("\(live.sessions) sessions · \(live.usage.totalRequests) requests").font(.system(size: 11)).foregroundStyle(.secondary) }
+                if let live { Text("\(live.sessions) sessions · \(live.usage.totalRequests) requests").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1) }
                 Spacer()
                 Button("Remove…") { confirmRemove = true }.controlSize(.small)
             }

@@ -27,8 +27,9 @@ struct PopoverView: View {
                 footer
             }
             .padding(14)
+            .frame(width: 300, alignment: .leading)
         }
-        .frame(width: 300)
+        .frame(width: 300, alignment: .leading)
     }
 
     // MARK: header
@@ -45,8 +46,9 @@ struct PopoverView: View {
                 Button { NSApp.sendAction(#selector(AppDelegate.showSettings), to: nil, from: nil) } label: { Image(systemName: "gearshape.fill") }
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Settings (⌘,)").keyboardShortcut(",")
             }
-            Text(subline(now: now)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            Text(subline(now: now)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -77,7 +79,8 @@ struct PopoverView: View {
         } label: {
             Text(store.status?.currentAccount.map(store.displayName) ?? "No current account").font(.system(size: 13, weight: .semibold)).lineLimit(1)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+        .menuStyle(.borderlessButton).menuIndicator(.visible)
+        .frame(maxWidth: 200, alignment: .leading)
         .help("Switch the current account")
     }
 
@@ -290,7 +293,6 @@ struct PopoverView: View {
                     if i < list.count - 1 { Divider() }
                 }
             }
-            .frame(maxHeight: 260)
         }
     }
 
@@ -332,7 +334,6 @@ struct AccountRow: View {
                 Chip(text: statusText, color: statusColor).fixedSize()
                 if account.priority != 0 { Chip(text: "prio \(account.priority)").fixedSize() }
                 Spacer(minLength: 4)
-                Text("\(account.sessions) sess").font(.system(size: 10)).foregroundStyle(.secondary).fixedSize()
                 if !isCurrent && !snapshotMode {
                     Button("Switch") { store.switchTo(account.name) }.font(.system(size: 10)).buttonStyle(.bordered).controlSize(.mini).fixedSize()
                 }
@@ -354,6 +355,7 @@ struct AccountRow: View {
                 }
             }
             HStack(spacing: 8) {
+                Text("\(account.sessions) sess").font(.system(size: 9)).foregroundStyle(.secondary).fixedSize()
                 if account.isApiKey {
                     let t = account.quota.tokensLimit.flatMap { l in account.quota.tokensRemaining.map { 1 - $0 / l } }
                     MiniBar(label: "Tok", ratio: t, level: t.map { Derived.rawLevel($0) } ?? .green, reset: Derived.formatReset(account.quota.resetsAt, now: now))

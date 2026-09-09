@@ -11,6 +11,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let openSettings: () -> Void
     private let item: NSStatusItem
     private let popover = NSPopover()
+    private var hosting: NSHostingController<AnyView>?
+    private var container: PopoverContainerController?
+    static let popoverWidth: CGFloat = 300
     private var lastModel: IconModel?
     private var lastStyle: Preferences.IconStyle?
     private var lastMono: Bool?
@@ -31,7 +34,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = false
         popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: PopoverView().environment(store))
+        let hosting = NSHostingController(rootView: AnyView(PopoverView().environment(store)))
+        // A bare NSHostingController as the popover's content ended up offset inside
+        // the popover frame (clipped left edge). Pinning it inside a plain container
+        // with Auto Layout keeps it exactly where the popover puts its content.
+        hosting.sizingOptions = []
+        hosting.safeAreaRegions = []
+        let container = PopoverContainerController(hosting: hosting)
+        popover.contentViewController = container
+        self.hosting = hosting
+        self.container = container
         observe()
     }
 
@@ -53,6 +65,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         if model == lastModel, style == lastStyle, mono == lastMono { return }
         lastModel = model; lastStyle = style; lastMono = mono
         let rendered = IconRenderer.render(model, style: style, monochrome: mono)
+        if popover.isShown { resizePopover() }
         button.image = rendered.image
         button.attributedTitle = rendered.title
         button.toolTip = model.tooltip
@@ -76,11 +89,23 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         guard let button = item.button else { return }
         store.popoverOpen = true
         store.refreshNow()
+        resizePopover()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
 
     var popoverWindowNumber: Int? { popover.contentViewController?.view.window?.windowNumber }
+
+    /// Measure the SwiftUI content at the fixed width and size the popover to it.
+    func resizePopover() {
+        guard let hosting else { return }
+        let size = hosting.sizeThatFits(in: NSSize(width: Self.popoverWidth, height: 10_000))
+        let target = NSSize(width: Self.popoverWidth, height: max(120, ceil(size.height)))
+        if popover.contentSize != target {
+            container?.preferredContentSize = target
+            popover.contentSize = target
+        }
+    }
 
     func closePopover() {
         popover.performClose(nil)
@@ -134,6 +159,34 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     @objc private func openLog() { NSWorkspace.shared.open(ProxyLocator.logPath()) }
     @objc private func settings() { openSettings() }
     @objc private func quit() { NSApp.terminate(nil) }
+}
+
+/// Plain container whose only job is to pin the SwiftUI hosting view to its edges.
+@MainActor
+final class PopoverContainerController: NSViewController {
+    private let hosting: NSHostingController<AnyView>
+
+    init(hosting: NSHostingController<AnyView>) {
+        self.hosting = hosting
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("unavailable") }
+
+    override func loadView() {
+        let root = NSView()
+        addChild(hosting)
+        let child = hosting.view
+        child.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(child)
+        NSLayoutConstraint.activate([
+            child.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            child.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            child.topAnchor.constraint(equalTo: root.topAnchor),
+            child.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+        ])
+        view = root
+    }
 }
 
 enum Actions {
