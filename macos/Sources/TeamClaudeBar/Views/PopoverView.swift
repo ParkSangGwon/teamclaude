@@ -331,7 +331,7 @@ struct AccountRow: View {
                     .frame(minWidth: 64, alignment: .leading).layoutPriority(2)
                     .help(account.name + (account.orgName.map { " · \($0)" } ?? ""))
                 Chip(text: Derived.tierBadge(tier)).fixedSize()
-                Chip(text: statusText, color: statusColor).fixedSize()
+                Chip(text: statusText + (account.sessions > 0 ? " · \(account.sessions) sess" : ""), color: statusColor).fixedSize()
                 if account.priority != 0 { Chip(text: "prio \(account.priority)").fixedSize() }
                 Spacer(minLength: 4)
                 if !isCurrent && !snapshotMode {
@@ -354,8 +354,7 @@ struct AccountRow: View {
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 }
             }
-            HStack(spacing: 8) {
-                Text("\(account.sessions) sess").font(.system(size: 9)).foregroundStyle(.secondary).fixedSize()
+            HStack(spacing: 6) {
                 if account.isApiKey {
                     let t = account.quota.tokensLimit.flatMap { l in account.quota.tokensRemaining.map { 1 - $0 / l } }
                     MiniBar(label: "Tok", ratio: t, level: t.map { Derived.rawLevel($0) } ?? .green, reset: Derived.formatReset(account.quota.resetsAt, now: now))

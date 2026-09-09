@@ -137,8 +137,8 @@ struct MiniBar: View {
             Text(label).font(.system(size: 9)).foregroundStyle(.secondary).fixedSize()
             ZStack(alignment: .leading) {
                 Capsule().fill(.primary.opacity(0.12))
-                if let ratio { Capsule().fill(level.color).frame(width: max(ratio > 0 ? 1 : 0, 40 * min(1, max(0, ratio)))) }
-            }.frame(width: 40, height: 3)
+                if let ratio { Capsule().fill(level.color).frame(width: max(ratio > 0 ? 1 : 0, 32 * min(1, max(0, ratio)))) }
+            }.frame(width: 32, height: 3)
             if let reset {
                 Text(reset.isEmpty ? "—" : reset).font(.system(size: 9)).monospacedDigit().foregroundStyle(level == .red ? .red : .secondary).fixedSize()
             }
