@@ -21,12 +21,12 @@ struct PopoverView: View {
                     if let status = store.status, status.accounts.isEmpty {
                         emptyState
                     } else if let status = store.status {
-                        if let current = status.current { currentCard(current, status: status, now: now) }
-                        // One account: the fleet is that account, already on the card above.
+                        // The accounts table is the one place every number lives; the current account is its highlighted row.
+                        accounts(status, now: now)
+                        // One account: the fleet is that account, already in the row above.
                         if status.accounts.count > 1, let quota = store.freshQuota { fleetCard(quota, status: status, now: now) }
                         let rows = Derived.routeRows(status)
                         if !rows.isEmpty { routing(rows, status: status) }
-                        accounts(status, now: now)
                         sessions(status, now: now)
                         rotationHistory(now: now)
                     } else {
@@ -171,68 +171,6 @@ struct PopoverView: View {
         return out
     }
 
-    // MARK: current account
-
-    @ViewBuilder
-    private func currentCard(_ a: Account, status: StatusSnapshot, now: Date) -> some View {
-        let tier = store.quota?.account(named: a.name)?.tier
-        VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: "Current account", trailing: [Derived.tierBadge(tier), a.priority != 0 ? "prio \(a.priority)" : nil].compactMap { $0 }.joined(separator: " · "))
-            Card {
-                if a.isApiKey {
-                    let tokens = Derived.usedFraction(remaining: a.quota.tokensRemaining, limit: a.quota.tokensLimit)
-                    let requests = Derived.usedFraction(remaining: a.quota.requestsRemaining, limit: a.quota.requestsLimit)
-                    UsageRow(title: "Tokens", subtitle: a.quota.tokensLimit.map { "of \(Derived.safeInt($0))" }, tag: nil, ratio: tokens, resetAt: a.quota.resetsAt, window: nil, threshold: status.thresholdFor(bucket: "tokens"), cap: nil, resetStyle: store.prefs.resetStyle, now: now)
-                    UsageRow(title: "Requests", subtitle: a.quota.requestsLimit.map { "of \(Derived.safeInt($0))" }, tag: nil, ratio: requests, resetAt: a.quota.resetsAt, window: nil, threshold: status.thresholdFor(bucket: "requests"), cap: nil, resetStyle: store.prefs.resetStyle, now: now)
-                } else if let backend = a.quota.backend {
-                    UsageRow(title: backend.label, subtitle: backend.text, tag: nil, ratio: backend.utilization, resetAt: nil, window: nil, threshold: nil, cap: nil, resetStyle: store.prefs.resetStyle, now: now)
-                } else if a.quota.isEmpty {
-                    Text("Quota unknown (no traffic observed yet)").font(.system(size: 11)).foregroundStyle(.secondary)
-                } else {
-                    UsageRow(title: "Session", subtitle: "5-hour window", tag: nil, ratio: a.quota.unified5h, resetAt: a.quota.unified5hReset, window: Window.fiveHour,
-                             threshold: status.thresholdFor(bucket: Buckets.fiveHour), cap: capFor(a, Buckets.fiveHour), resetStyle: store.prefs.resetStyle, now: now)
-                    UsageRow(title: "All models", subtitle: nil, tag: "Weekly", ratio: a.quota.unified7d, resetAt: a.quota.unified7dReset, window: Window.sevenDay,
-                             threshold: status.thresholdFor(bucket: Buckets.weekly), cap: capFor(a, Buckets.weekly), resetStyle: store.prefs.resetStyle, now: now)
-                    ForEach(Derived.scopedWeeklyRows(a.quota), id: \.family) { row in
-                        let bucket = row.family == "fable" ? Buckets.fable : row.family == "sonnet" ? Buckets.sonnet : Buckets.weekly
-                        UsageRow(title: row.label, subtitle: nil, tag: "Weekly", ratio: row.utilization, resetAt: row.resetAt, window: Window.sevenDay,
-                                 threshold: status.thresholdFor(bucket: bucket), cap: capFor(a, bucket), resetStyle: store.prefs.resetStyle, now: now,
-                                 footNote: sharedNote(a, row.family))
-                    }
-                }
-                if let spend = a.quota.spend, spend.enabled {
-                    // Overage is the one bucket that costs money instead of quota; the bar is used against the limit.
-                    let used = spend.usedMinor ?? 0
-                    let ratio = spend.limitMinor.flatMap { $0 > 0 ? used / $0 : nil }
-                    let usedText = Derived.formatMoney(minor: used, currency: spend.currency, exponent: spend.exponent)
-                    let limitText = spend.limitMinor.map { " / " + Derived.formatMoney(minor: $0, currency: spend.currency, exponent: spend.exponent) } ?? " · no limit"
-                    UsageRow(title: "Extra usage", subtitle: usedText + limitText, tag: "$", ratio: ratio, resetAt: nil, window: nil, threshold: nil, cap: nil, resetStyle: store.prefs.resetStyle, now: now)
-                }
-                if let next = Derived.nextUp(status), !next.isCurrent || status.accounts.count > 1 {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Image(systemName: "arrow.turn.down.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.accentColor)
-                        Text(next.isCurrent ? "Next request stays here" : "Next → \(store.compactName(next.name))").font(.system(size: 11, weight: .medium))
-                        Text("· " + next.reason).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
-                    }
-                    .help(next.isCurrent ? "The next unrouted request goes to the current account. \(next.reason)" : "The next unrouted request goes to \(next.name). \(next.reason)")
-                }
-            }
-        }
-    }
-
-    private func capFor(_ a: Account, _ bucket: String) -> Double? {
-        if let n = a.maxUsage.double { return n }
-        if let table = a.maxUsage.object { return (table[bucket] ?? table["default"])?.double }
-        return nil
-    }
-
-    private func sharedNote(_ a: Account, _ family: String) -> String? {
-        guard let q = store.quota?.account(named: a.name) else { return nil }
-        let key = family == "fable" ? "weeklyFable" : family == "sonnet" ? "weeklySonnet" : nil
-        guard let key, q.buckets[key]?.source == Buckets.weekly else { return nil }
-        return "shares the weekly bucket"
-    }
-
     // MARK: fleet
 
     @ViewBuilder
@@ -340,6 +278,15 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 6) {
             SectionHeader(title: "Accounts", trailing: status.sessions.map(Derived.formatSessions))
             AccountsTable(status: status, quota: store.freshQuota, now: now)
+            if status.accounts.count > 1, let next = Derived.nextUp(status) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Image(systemName: "arrow.turn.down.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.accentColor)
+                    Text(next.isCurrent ? "Next request stays on \(store.compactName(next.name))" : "Next → \(store.compactName(next.name))").font(.system(size: 11, weight: .medium))
+                    Text("· " + next.reason).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
+                }
+                .padding(.leading, 2)
+                .help("The next unrouted request goes to \(next.name). \(next.reason)")
+            }
         }
     }
 

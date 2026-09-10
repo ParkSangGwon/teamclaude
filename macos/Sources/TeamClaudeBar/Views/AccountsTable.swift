@@ -3,8 +3,8 @@ import AppKit
 import TeamClaudeCore
 
 /// Per-account rows as a dense table: one column per bucket (session, weekly,
-/// and the per-family weeks when any account has one), a segmented bar with the
-/// number and reset under it — the TUI's account table, in the popover.
+/// and the per-family weeks when any account has one), a bar with the elapsed
+/// tick and the number and reset under it — the TUI's account table, in the popover.
 struct AccountsTable: View {
     @Environment(AppStore.self) private var store
     var status: StatusSnapshot
@@ -78,7 +78,7 @@ struct AccountTableRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 3) {
                         Image(systemName: isNext ? "arrow.turn.down.right" : "arrowtriangle.right.fill").font(.system(size: 7)).foregroundStyle(isCurrent || isNext ? Color.accentColor : Color.clear)
-                        Text(store.compactName(account.name)).font(.system(size: 11, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                        Text(store.compactName(account.name)).font(.system(size: isCurrent ? 12 : 11, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                         if let spend = account.quota.spend, spend.enabled { Chip(text: "$", color: (spend.usedMinor ?? 0) > 0 ? Level.orange.color : .secondary) }
                     }
                     Text(subtitle).font(.system(size: 10)).foregroundStyle(statusColor).lineLimit(1)
@@ -90,13 +90,13 @@ struct AccountTableRow: View {
                     // The column headers say session/weekly; an API-key account has tokens and requests instead (the TUI relabels too).
                     let t = Derived.usedFraction(remaining: account.quota.tokensRemaining, limit: account.quota.tokensLimit)
                     let r = Derived.usedFraction(remaining: account.quota.requestsRemaining, limit: account.quota.requestsLimit)
-                    cell(t, reset: account.quota.resetsAt, window: nil, bucket: "tokens", name: "Tokens", prefix: "Tok ", width: AccountsTable.wideCol, segments: 8)
-                    cell(r, reset: account.quota.resetsAt, window: nil, bucket: "requests", name: "Requests", prefix: "Req ", width: AccountsTable.wideCol, segments: 8)
+                    cell(t, reset: account.quota.resetsAt, window: nil, bucket: "tokens", name: "Tokens", prefix: "Tok ", width: AccountsTable.wideCol)
+                    cell(r, reset: account.quota.resetsAt, window: nil, bucket: "requests", name: "Requests", prefix: "Req ", width: AccountsTable.wideCol)
                     if showFable { placeholder(AccountsTable.narrowCol) }
                     if showSonnet { placeholder(AccountsTable.narrowCol) }
                 } else {
-                    cell(account.quota.unified5h, reset: account.quota.unified5hReset, window: Window.fiveHour, bucket: Buckets.fiveHour, name: "Session", width: AccountsTable.wideCol, segments: 8)
-                    cell(account.quota.unified7d, reset: account.quota.unified7dReset, window: Window.sevenDay, bucket: Buckets.weekly, name: "Weekly", width: AccountsTable.wideCol, segments: 8)
+                    cell(account.quota.unified5h, reset: account.quota.unified5hReset, window: Window.fiveHour, bucket: Buckets.fiveHour, name: "Session", width: AccountsTable.wideCol)
+                    cell(account.quota.unified7d, reset: account.quota.unified7dReset, window: Window.sevenDay, bucket: Buckets.weekly, name: "Weekly", width: AccountsTable.wideCol)
                     if showFable { family(account.quota.unified7dFable, reset: account.quota.unified7dFableReset, bucket: Buckets.fable, name: "Fable weekly") }
                     if showSonnet { family(account.quota.unified7dSonnet, reset: account.quota.unified7dSonnetReset, bucket: Buckets.sonnet, name: "Sonnet weekly") }
                 }
@@ -142,15 +142,16 @@ struct AccountTableRow: View {
     }
 
     @ViewBuilder
-    private func cell(_ ratio: Double?, reset: Date?, window: TimeInterval?, bucket: String, name: String, prefix: String = "", width: CGFloat, segments: Int) -> some View {
+    private func cell(_ ratio: Double?, reset: Date?, window: TimeInterval?, bucket: String, name: String, prefix: String = "", width: CGFloat) -> some View {
         let resetLong = Derived.formatResetLong(reset, style: .both, now: now)
         VStack(alignment: .leading, spacing: 2) {
             if let ratio {
                 let level = Derived.level(ratio: ratio, resetAt: reset, window: window, threshold: status.thresholdFor(bucket: bucket), now: now)
-                SegmentBar(ratio: ratio, level: level, segments: segments, width: width - 4)
-                Text(prefix + label(ratio, reset)).font(.system(size: 10, design: .monospaced)).foregroundStyle(level == .red ? Level.red.color : Color.secondary).lineLimit(1)
+                QuotaBar(ratio: ratio, level: level, elapsed: window.flatMap { Derived.elapsedFraction(resetAt: reset, window: $0, now: now) }, cap: nil, height: 5)
+                    .frame(width: width - 6)
+                Text(prefix + label(ratio, reset)).font(.system(size: isCurrent ? 11 : 10, weight: isCurrent ? .semibold : .regular, design: .monospaced)).foregroundStyle(level == .red ? Level.red.color : Color.secondary).lineLimit(1)
             } else {
-                SegmentBar(ratio: 0, level: .green, segments: segments, width: width - 4)
+                QuotaBar(ratio: 0, level: .green, elapsed: nil, cap: nil, height: 5).frame(width: width - 6)
                 Text(prefix + "—").font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
             }
         }
@@ -166,8 +167,9 @@ struct AccountTableRow: View {
             let level = Derived.level(ratio: ratio, resetAt: reset, window: Window.sevenDay, threshold: status.thresholdFor(bucket: bucket), now: now)
             let resetLong = Derived.formatResetLong(reset, style: .both, now: now)
             VStack(alignment: .leading, spacing: 2) {
-                SegmentBar(ratio: ratio, level: level, segments: 6, width: AccountsTable.narrowCol - 4)
-                Text("\(Derived.percentInt(ratio))%").font(.system(size: 10, design: .monospaced)).foregroundStyle(level == .red ? Level.red.color : Color.secondary)
+                QuotaBar(ratio: ratio, level: level, elapsed: Derived.elapsedFraction(resetAt: reset, window: Window.sevenDay, now: now), cap: nil, height: 5)
+                    .frame(width: AccountsTable.narrowCol - 6)
+                Text("\(Derived.percentInt(ratio))%").font(.system(size: isCurrent ? 11 : 10, weight: isCurrent ? .semibold : .regular, design: .monospaced)).foregroundStyle(level == .red ? Level.red.color : Color.secondary)
             }
             .frame(width: AccountsTable.narrowCol, alignment: .leading)
             .help("\(name) \(Derived.formatPercent(ratio)) · \(resetLong)")
@@ -175,7 +177,7 @@ struct AccountTableRow: View {
             .accessibilityLabel("\(name) \(Derived.formatPercent(ratio)), \(resetLong)")
         } else {
             VStack(alignment: .leading, spacing: 2) {
-                SegmentBar(ratio: 0, level: .green, segments: 6, width: AccountsTable.narrowCol - 4)
+                QuotaBar(ratio: 0, level: .green, elapsed: nil, cap: nil, height: 5).frame(width: AccountsTable.narrowCol - 6)
                 Text("=wk").font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
             }
             .frame(width: AccountsTable.narrowCol, alignment: .leading)
@@ -235,27 +237,5 @@ struct AccountTableRow: View {
             return r.isEmpty ? "" : " \(r)"
         }
         return ""
-    }
-}
-
-/// Ten-ish segments, the TUI bar in miniature.
-struct SegmentBar: View {
-    var ratio: Double
-    var level: Level
-    var segments: Int
-    var width: CGFloat
-
-    var body: some View {
-        let gap: CGFloat = 1
-        let segW = (width - gap * CGFloat(segments - 1)) / CGFloat(segments)
-        let filled = Int((min(1, max(0, ratio)) * Double(segments)).rounded(.up))
-        HStack(spacing: gap) {
-            ForEach(0..<segments, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(i < filled ? level.color : Color.primary.opacity(0.12))
-                    .frame(width: segW, height: 7)
-            }
-        }
-        .accessibilityHidden(true)
     }
 }
