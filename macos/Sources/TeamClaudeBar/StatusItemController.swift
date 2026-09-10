@@ -18,12 +18,26 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var lastStyle: Preferences.IconStyle?
     private var lastMono: Bool?
 
+    static let autosaveName = "teamclaudeBar.main"
+
+    /// macOS remembers a status item's slot under this key (distance from the
+    /// right edge, in points). A new item otherwise lands at the far left of the
+    /// status area, which a full menu bar hides behind the notch or an overflow
+    /// chevron. A small value keeps it next to the system items.
+    static func applyPreferredPosition(keepRight: Bool) {
+        guard keepRight else { return }
+        UserDefaults.standard.set(30, forKey: "NSStatusItem Preferred Position \(autosaveName)")
+        UserDefaults.standard.set(true, forKey: "NSStatusItem Visible \(autosaveName)")
+    }
+
     init(store: AppStore, openSettings: @escaping () -> Void) {
         self.store = store
         self.openSettings = openSettings
+        Self.applyPreferredPosition(keepRight: store.prefs.keepRight)
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
-        item.autosaveName = "teamclaudeBar.main"
+        item.autosaveName = NSStatusItem.AutosaveName(Self.autosaveName)
+        item.isVisible = true
         if let button = item.button {
             button.target = self
             button.action = #selector(clicked(_:))
@@ -79,6 +93,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         } else {
             togglePopover()
         }
+    }
+
+    func remove() {
+        NSStatusBar.system.removeStatusItem(item)
     }
 
     func togglePopover() {

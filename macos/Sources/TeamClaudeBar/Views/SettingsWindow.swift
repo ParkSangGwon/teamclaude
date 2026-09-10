@@ -122,6 +122,7 @@ struct GeneralPane: View {
     @State private var pinCurrent = false
     @State private var showRemaining = false
     @State private var monochrome = true
+    @State private var keepRight = true
     @State private var warnLevel = 0.7
     @State private var pollOpen = 2.0
     @State private var pollClosed = 30.0
@@ -147,6 +148,10 @@ struct GeneralPane: View {
                 Toggle("Show the current account instead of the fleet", isOn: $pinCurrent)
                 Toggle("Show remaining instead of used", isOn: $showRemaining)
                 Toggle("Monochrome (follows the menu bar)", isOn: $monochrome)
+                HStack {
+                    Toggle("Keep next to the system items (a full menu bar otherwise hides it)", isOn: $keepRight)
+                    Button("Reposition now") { keepRight = true; store.prefs.keepRight = true; (NSApp.delegate as? AppDelegate)?.repositionStatusItem() }.controlSize(.small)
+                }
                 HStack { Text("Warning level"); Slider(value: $warnLevel, in: 0.5...0.95, step: 0.05).frame(width: 200); Text("\(Int(warnLevel * 100))%").monospacedDigit() }
             }
             group("Refresh") {
@@ -184,6 +189,7 @@ struct GeneralPane: View {
         .onChange(of: pinCurrent) { _, v in store.prefs.pinCurrent = v; store.prefsVersion += 1 }
         .onChange(of: showRemaining) { _, v in store.prefs.showRemaining = v; store.prefsVersion += 1 }
         .onChange(of: monochrome) { _, v in store.prefs.monochrome = v; store.prefsVersion += 1 }
+        .onChange(of: keepRight) { _, v in store.prefs.keepRight = v }
         .onChange(of: warnLevel) { _, v in store.prefs.warnLevel = v; store.prefsVersion += 1 }
         .onChange(of: pollOpen) { _, v in store.prefs.pollOpen = v }
         .onChange(of: pollClosed) { _, v in store.prefs.pollClosed = v }
@@ -198,6 +204,7 @@ struct GeneralPane: View {
         pinCurrent = store.prefs.pinCurrent
         showRemaining = store.prefs.showRemaining
         monochrome = store.prefs.monochrome
+        keepRight = store.prefs.keepRight
         warnLevel = store.prefs.warnLevel
         pollOpen = store.prefs.pollOpen
         pollClosed = store.prefs.pollClosed

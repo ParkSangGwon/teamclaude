@@ -54,6 +54,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.stop()
     }
 
+    /// Recreate the status item so a changed position preference takes effect.
+    func repositionStatusItem() {
+        statusItem.closePopover()
+        statusItem.remove()
+        statusItem = StatusItemController(store: store, openSettings: { [weak self] in self?.showSettings() })
+    }
+
     @objc func showSettings() {
         statusItem.closePopover()
         if settings == nil { settings = SettingsWindowController(store: store) }

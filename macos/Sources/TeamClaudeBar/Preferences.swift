@@ -20,6 +20,7 @@ final class Preferences {
         static let alertPrefs = "alertPrefs"
         static let alertState = "alertState"
         static let hidePII = "hidePII"
+        static let keepRight = "menuBarKeepRight"
     }
 
     enum IconStyle: String, CaseIterable { case barsPercent, bars, percent, barsBoth, quiet }
@@ -34,6 +35,8 @@ final class Preferences {
     var resetStyle: Derived.ResetStyle { get { Derived.ResetStyle(rawValue: d.string(forKey: Key.resetStyle) ?? "") ?? .both } set { d.set(newValue.rawValue, forKey: Key.resetStyle) } }
     var cliPath: String? { get { d.string(forKey: Key.cliPath) } set { d.set(newValue, forKey: Key.cliPath) } }
     var hidePII: Bool { get { d.bool(forKey: Key.hidePII) } set { d.set(newValue, forKey: Key.hidePII) } }
+    /// Place the item next to the system items so a full menu bar never hides it (default on).
+    var keepRight: Bool { get { d.object(forKey: Key.keepRight) as? Bool ?? true } set { d.set(newValue, forKey: Key.keepRight) } }
 
     var alertPrefs: AlertPrefs {
         get { (d.data(forKey: Key.alertPrefs).flatMap { try? JSONDecoder().decode(AlertPrefs.self, from: $0) }) ?? AlertPrefs() }
