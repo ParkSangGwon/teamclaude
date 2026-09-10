@@ -67,6 +67,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The Swift integration test and the snapshot script both spawn the proxy
+      # from ../src, so pin the Node the package supports rather than rely on
+      # whatever the runner image happens to ship.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
       - name: Show toolchain
         run: swift --version
 
@@ -78,6 +86,17 @@ jobs:
 
       - name: Bundle smoke
         run: make -C macos app && plutil -lint "macos/dist/TeamClaude Bar.app/Contents/Info.plist"
+
+      # Popover and settings panes rendered against a throwaway proxy, so a PR
+      # review can see the UI without checking the branch out.
+      - name: Snapshots
+        run: make -C macos snapshots
+
+      - name: Upload snapshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-snapshots
+          path: macos/dist/snapshots
 
   # Single stable status check for branch protection to require, independent of
   # how many implementation jobs run. Always runs and fails explicitly if any

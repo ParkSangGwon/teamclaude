@@ -17,6 +17,15 @@ struct ProxyPane: View {
                 if let s = store.status?.server {
                     row("Started", s.startedAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "—")
                     row("Upstream", s.upstream ?? "—")
+                    row("Version", s.version.map { "\($0) (reported by the proxy)" } ?? (store.cliVersion.map { "\($0) (from the CLI; the proxy predates version reporting)" } ?? "—"))
+                    if let loop = s.eventLoop {
+                        row("Event loop", "lag \(loop.lastLagMs) ms · max \(loop.maxLagMs) ms · \(loop.stallCount) stall\(loop.stallCount == 1 ? "" : "s")"
+                            + (loop.lastStallAt.map { " · last \(Derived.formatDuration(Date().timeIntervalSince($0))) ago" } ?? "")
+                            + (loop.lagging ? " · above the \(loop.warnLagMs) ms warning line" : ""))
+                    }
+                }
+                if let pool = store.status?.upstreamPool {
+                    row("Upstream pool", "\(pool.active) active · \(pool.queued) queued · \(pool.origins) origin\(pool.origins == 1 ? "" : "s") · limit \(pool.perOriginLimit)/origin, queue \(pool.maxQueue)")
                 }
                 row("Key in use", store.endpoint.apiKey.map { $0.prefix(5) + "…" } ?? "none (loopback exempt)")
                 HStack {
@@ -59,7 +68,7 @@ struct ProxyPane: View {
             } message: { Text("The proxy stops and no longer starts at login. The config and accounts are kept; reinstall from this pane.") }
             card("teamclaude CLI") {
                 row("Detected", store.cliLocation.map { "\($0.describe) (\($0.source.rawValue))" } ?? "not found")
-                row("Version", store.serverVersion ?? "—")
+                row("Version", store.cliVersion ?? "—")
                 HStack {
                     TextField("Override path to teamclaude", text: $cliPath).textFieldStyle(.roundedBorder).frame(maxWidth: 380)
                     Button("Apply") { store.prefs.cliPath = cliPath.isEmpty ? nil : cliPath; Task { await store.resolveCLI() } }.controlSize(.small)
@@ -133,6 +142,41 @@ struct QuotaPane: View {
             }
             SchemaPane(section: .quota)
             WarmupEditor()
+            if let warm = store.status?.warm {
+                Divider()
+                WarmStatusView(warm: warm, quotaWarmup: store.quota?.warmup ?? .null)
+            }
+        }
+    }
+}
+
+/// What keep-warm did and will do: it spends quota on every idle account, so its silence needs explaining.
+struct WarmStatusView: View {
+    @Environment(AppStore.self) private var store
+    var warm: JobState
+    var quotaWarmup: JSON
+
+    var summary: String {
+        guard warm.enabled else { return "off" }
+        var parts = [warm.mode.map { "mode \($0)" } ?? "on"]
+        if warm.intervalSeconds > 0 { parts.append("every \(warm.intervalSeconds) s") }
+        if let tz = quotaWarmup["timezone"].string { parts.append(tz) }
+        if let next = warm.nextRunAt ?? quotaWarmup["nextWarmupAt"].date { parts.append("next in \(Derived.formatReset(next))") }
+        if let reset = quotaWarmup["nextResetAt"].date { parts.append("target reset in \(Derived.formatReset(reset))") }
+        if let last = warm.lastRunFinishedAt { parts.append("last \(Derived.formatDuration(Date().timeIntervalSince(last))) ago") }
+        if warm.running { parts.append("running now") }
+        return parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Keep-warm status").font(.system(size: 13, weight: .semibold))
+            Text(summary).font(.system(size: 12)).foregroundStyle(.secondary)
+            ForEach(warm.accounts, id: \.name) { a in
+                let when = a.lastAt.map { "warmed \(Derived.formatDuration(Date().timeIntervalSince($0))) ago" } ?? "never warmed"
+                let text = "\(store.compactName(a.name)): \(a.status ?? "—") · \(when)" + (a.error.map { " · \($0)" } ?? "")
+                Text(text).font(.system(size: 11)).foregroundStyle(a.error == nil ? Color.secondary : Color.red)
+            }
         }
     }
 }
@@ -236,7 +280,7 @@ struct WarmupEditor: View {
         let change: SettingChange
         switch warmMode {
         case "off":
-            change = .warmupOff
+            change = .warmupInterval(seconds: 0)
         case "interval":
             guard let secs = Int(interval), secs >= 60 else { error = "Interval must be at least 60 s"; return }
             change = .warmupInterval(seconds: secs)

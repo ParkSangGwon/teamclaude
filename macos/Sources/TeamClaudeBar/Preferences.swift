@@ -1,53 +1,72 @@
 import Foundation
+import Observation
 import TeamClaudeCore
 
-/// Per-user app preferences (UserDefaults). The proxy's own settings live in its config file.
+/// Per-user app preferences: observable stored properties that mirror themselves
+/// into UserDefaults, so views bind to them directly and the icon re-renders on
+/// change. The proxy's own settings live in its config file.
 @MainActor
+@Observable
 final class Preferences {
     static let shared = Preferences()
-    private let d = UserDefaults.standard
-
-    enum Key {
-        static let pollOpen = "pollOpenSeconds"
-        static let pollClosed = "pollClosedSeconds"
-        static let iconStyle = "iconStyle"
-        static let pinCurrent = "iconPinCurrent"
-        static let showRemaining = "iconShowRemaining"
-        static let monochrome = "iconMonochrome"
-        static let warnLevel = "warnLevel"
-        static let resetStyle = "resetStyle"
-        static let cliPath = "cliPathOverride"
-        static let alertPrefs = "alertPrefs"
-        static let alertState = "alertState"
-        static let hidePII = "hidePII"
-        static let keepRight = "menuBarKeepRight"
-        static let lastUpdateCheck = "lastUpdateCheck"
-        static let latestVersion = "latestVersion"
-    }
 
     enum IconStyle: String, CaseIterable { case barsPercent, bars, percent, barsBoth, quiet }
 
-    var pollOpen: TimeInterval { get { d.object(forKey: Key.pollOpen) as? Double ?? 2 } set { d.set(newValue, forKey: Key.pollOpen) } }
-    var pollClosed: TimeInterval { get { d.object(forKey: Key.pollClosed) as? Double ?? 30 } set { d.set(newValue, forKey: Key.pollClosed) } }
-    var iconStyle: IconStyle { get { IconStyle(rawValue: d.string(forKey: Key.iconStyle) ?? "") ?? .barsPercent } set { d.set(newValue.rawValue, forKey: Key.iconStyle) } }
-    var pinCurrent: Bool { get { d.bool(forKey: Key.pinCurrent) } set { d.set(newValue, forKey: Key.pinCurrent) } }
-    var showRemaining: Bool { get { d.bool(forKey: Key.showRemaining) } set { d.set(newValue, forKey: Key.showRemaining) } }
-    var monochrome: Bool { get { d.object(forKey: Key.monochrome) as? Bool ?? true } set { d.set(newValue, forKey: Key.monochrome) } }
-    var warnLevel: Double { get { d.object(forKey: Key.warnLevel) as? Double ?? 0.7 } set { d.set(newValue, forKey: Key.warnLevel) } }
-    var resetStyle: Derived.ResetStyle { get { Derived.ResetStyle(rawValue: d.string(forKey: Key.resetStyle) ?? "") ?? .both } set { d.set(newValue.rawValue, forKey: Key.resetStyle) } }
-    var cliPath: String? { get { d.string(forKey: Key.cliPath) } set { d.set(newValue, forKey: Key.cliPath) } }
-    var hidePII: Bool { get { d.bool(forKey: Key.hidePII) } set { d.set(newValue, forKey: Key.hidePII) } }
-    /// Place the item next to the system items so a full menu bar never hides it (default on).
-    var keepRight: Bool { get { d.object(forKey: Key.keepRight) as? Bool ?? true } set { d.set(newValue, forKey: Key.keepRight) } }
-    var lastUpdateCheck: Date? { get { d.object(forKey: Key.lastUpdateCheck) as? Date } set { d.set(newValue, forKey: Key.lastUpdateCheck) } }
-    var cachedLatestVersion: String? { get { d.string(forKey: Key.latestVersion) } set { d.set(newValue, forKey: Key.latestVersion) } }
-
-    var alertPrefs: AlertPrefs {
-        get { (d.data(forKey: Key.alertPrefs).flatMap { try? JSONDecoder().decode(AlertPrefs.self, from: $0) }) ?? AlertPrefs() }
-        set { d.set(try? JSONEncoder().encode(newValue), forKey: Key.alertPrefs) }
+    /// One choice for both cadences: (popover open, popover closed) seconds.
+    enum Refresh: String, CaseIterable {
+        case fast, normal, powerSaver
+        var intervals: (open: TimeInterval, closed: TimeInterval) {
+            switch self {
+            case .fast: return (2, 15)
+            case .normal: return (2, 30)
+            case .powerSaver: return (5, 60)
+            }
+        }
+        var title: String {
+            switch self {
+            case .fast: return "Fast (2 s / 15 s)"
+            case .normal: return "Normal (2 s / 30 s)"
+            case .powerSaver: return "Power saver (5 s / 60 s)"
+            }
+        }
     }
-    var alertState: AlertState {
-        get { (d.data(forKey: Key.alertState).flatMap { try? JSONDecoder().decode(AlertState.self, from: $0) }) ?? AlertState() }
-        set { d.set(try? JSONEncoder().encode(newValue), forKey: Key.alertState) }
+
+    var refresh: Refresh { didSet { d.set(refresh.rawValue, forKey: "refreshProfile") } }
+    var iconStyle: IconStyle { didSet { d.set(iconStyle.rawValue, forKey: "iconStyle") } }
+    var pinCurrent: Bool { didSet { d.set(pinCurrent, forKey: "iconPinCurrent") } }
+    var showRemaining: Bool { didSet { d.set(showRemaining, forKey: "iconShowRemaining") } }
+    var monochrome: Bool { didSet { d.set(monochrome, forKey: "iconMonochrome") } }
+    var resetStyle: Derived.ResetStyle { didSet { d.set(resetStyle.rawValue, forKey: "resetStyle") } }
+    var cliPath: String? { didSet { d.set(cliPath, forKey: "cliPathOverride") } }
+    var hidePII: Bool { didSet { d.set(hidePII, forKey: "hidePII") } }
+    /// ⌃⌥⌘N: move traffic to the next account that can serve.
+    var hotkeyNextAccount: Bool { didSet { d.set(hotkeyNextAccount, forKey: "hotkeyNextAccount") } }
+    /// ⌃⌥⌘T: open or close the popover.
+    var hotkeyTogglePopover: Bool { didSet { d.set(hotkeyTogglePopover, forKey: "hotkeyTogglePopover") } }
+    var alertPrefs: AlertPrefs { didSet { d.set(try? JSONEncoder().encode(alertPrefs), forKey: "alertPrefs") } }
+    var alertState: AlertState { didSet { d.set(try? JSONEncoder().encode(alertState), forKey: "alertState") } }
+    var rotationLog: RotationLog { didSet { d.set(try? JSONEncoder().encode(rotationLog), forKey: "rotationLog") } }
+
+    var pollOpen: TimeInterval { refresh.intervals.open }
+    var pollClosed: TimeInterval { refresh.intervals.closed }
+
+    private let d = UserDefaults.standard
+
+    private init() {
+        // A pre-profile build stored the two intervals; the closed one picks the nearest profile.
+        let closed = d.object(forKey: "pollClosedSeconds") as? Double
+        refresh = Refresh(rawValue: d.string(forKey: "refreshProfile") ?? "") ?? (closed.map { $0 <= 15 ? .fast : $0 >= 60 ? .powerSaver : .normal } ?? .normal)
+        iconStyle = IconStyle(rawValue: d.string(forKey: "iconStyle") ?? "") ?? .barsPercent
+        pinCurrent = d.bool(forKey: "iconPinCurrent")
+        showRemaining = d.bool(forKey: "iconShowRemaining")
+        monochrome = d.object(forKey: "iconMonochrome") as? Bool ?? true
+        resetStyle = Derived.ResetStyle(rawValue: d.string(forKey: "resetStyle") ?? "") ?? .both
+        cliPath = d.string(forKey: "cliPathOverride")
+        hidePII = d.bool(forKey: "hidePII")
+        hotkeyNextAccount = d.object(forKey: "hotkeyNextAccount") as? Bool ?? true
+        hotkeyTogglePopover = d.object(forKey: "hotkeyTogglePopover") as? Bool ?? true
+        alertPrefs = (d.data(forKey: "alertPrefs").flatMap { try? JSONDecoder().decode(AlertPrefs.self, from: $0) }) ?? AlertPrefs()
+        alertState = (d.data(forKey: "alertState").flatMap { try? JSONDecoder().decode(AlertState.self, from: $0) }) ?? AlertState()
+        rotationLog = (d.data(forKey: "rotationLog").flatMap { try? JSONDecoder().decode(RotationLog.self, from: $0) }) ?? RotationLog()
     }
 }

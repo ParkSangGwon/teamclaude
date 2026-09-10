@@ -13,7 +13,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let popover = NSPopover()
     private var hosting: NSHostingController<AnyView>?
     private var container: PopoverContainerController?
-    static let popoverWidth: CGFloat = 300
+    /// Wide enough for the account table's five columns at a readable size.
+    static let popoverWidth: CGFloat = 380
     private var lastModel: IconModel?
     private var lastStyle: Preferences.IconStyle?
     private var lastMono: Bool?
@@ -23,13 +24,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// macOS remembers a status item's slot under this key (distance from the
     /// right edge, in points). A new item otherwise lands at the far left of the
     /// status area, which a full menu bar hides behind the notch or an overflow
-    /// chevron. A small value keeps it next to the system items. Only seeded
-    /// while no position is saved (or on demand), so a slot the user dragged the
-    /// item to survives a relaunch.
-    static func applyPreferredPosition(keepRight: Bool, force: Bool = false) {
-        guard keepRight else { return }
+    /// chevron. Seeded once, on the first launch, so a slot the user dragged the
+    /// item to afterwards survives a relaunch.
+    static func seedPositionOnFirstLaunch() {
         let key = "NSStatusItem Preferred Position \(autosaveName)"
-        guard force || UserDefaults.standard.object(forKey: key) == nil else { return }
+        guard UserDefaults.standard.object(forKey: key) == nil else { return }
         UserDefaults.standard.set(30, forKey: key)
         UserDefaults.standard.set(true, forKey: "NSStatusItem Visible \(autosaveName)")
     }
@@ -37,7 +36,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     init(store: AppStore, openSettings: @escaping () -> Void) {
         self.store = store
         self.openSettings = openSettings
-        Self.applyPreferredPosition(keepRight: store.prefs.keepRight)
+        Self.seedPositionOnFirstLaunch()
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         item.autosaveName = NSStatusItem.AutosaveName(Self.autosaveName)
@@ -75,7 +74,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func render() {
-        _ = store.prefsVersion
         let model = store.iconModel
         let style = store.prefs.iconStyle
         let mono = store.prefs.monochrome
@@ -102,9 +100,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     func remove() {
         NSStatusBar.system.removeStatusItem(item)
     }
-
-    /// "Reposition now": re-seed the slot even though a position is saved.
-    static func reseedPosition() { applyPreferredPosition(keepRight: true, force: true) }
 
     func togglePopover() {
         if popover.isShown { closePopover() } else { showPopover() }
@@ -146,23 +141,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let head = NSMenuItem(title: current.map { "Current: \(store.displayName($0))" } ?? "TeamClaude", action: nil, keyEquivalent: "")
         head.isEnabled = false
         menu.addItem(head)
-        if let status = store.status, !status.accounts.isEmpty {
-            let switchMenu = NSMenu()
-            let canSwitch = !store.isDown && store.switchSupported
-            for a in status.accountsByPriority {
-                var title = store.displayName(a.name)
-                if let why = UnavailableText.label(a.unavailable) { title += " · \(why)" }
-                let mi = NSMenuItem(title: title, action: canSwitch ? #selector(switchAccount(_:)) : nil, keyEquivalent: "")
-                mi.target = self
-                mi.representedObject = a.name
-                mi.state = a.name == current ? .on : .off
-                mi.isEnabled = canSwitch
-                switchMenu.addItem(mi)
-            }
-            switchMenu.autoenablesItems = false
-            let switchItem = NSMenuItem(title: "Switch To", action: nil, keyEquivalent: "")
-            switchItem.submenu = switchMenu
-            menu.addItem(switchItem)
+        if store.status?.accounts.count ?? 0 > 1 {
+            let next = menu.addItem(withTitle: "Switch to Next Available Account", action: #selector(switchNext), keyEquivalent: "")
+            next.target = self
+            next.isEnabled = !store.isDown && store.switchSupported
         }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Refresh", action: #selector(refresh), keyEquivalent: "r").target = self
@@ -176,14 +158,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit TeamClaude Bar", action: #selector(quit), keyEquivalent: "q").target = self
+        menu.autoenablesItems = false
         item.menu = menu
         item.button?.performClick(nil)
         item.menu = nil
     }
 
-    @objc private func switchAccount(_ sender: NSMenuItem) {
-        if let name = sender.representedObject as? String { store.switchTo(name) }
-    }
+    @objc private func switchNext() { store.switchToNextAvailable() }
     @objc private func refresh() { store.refreshNow() }
     @objc private func reload() { Task { await store.reloadConfig() } }
     @objc private func openDashboard() { Actions.openDashboard(store) }

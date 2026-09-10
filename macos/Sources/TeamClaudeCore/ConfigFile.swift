@@ -67,20 +67,64 @@ public struct ConfigFile: Sendable, Equatable {
         return Version(modified: modified, size: UInt64(st.st_size), inode: UInt64(st.st_ino))
     }
 
-    /// Read → mutate → write, retried when another writer landed in between.
+    /// Read → mutate → write under the shared lock, retried when another writer landed in between.
     @discardableResult
     public func update(attempts: Int = 3, _ mutate: (inout JSON) throws -> Void) throws -> JSON {
-        var lastError: Error = ConfigError.changedUnderneath
-        for _ in 0..<max(1, attempts) {
-            let loaded: Loaded
-            do { loaded = try load() } catch ConfigError.changedUnderneath { lastError = ConfigError.changedUnderneath; continue }
-            var root = loaded.root
-            try mutate(&root)
-            if version() != loaded.version { lastError = ConfigError.changedUnderneath; continue }
-            try write(root)
-            return root
+        try withLock {
+            var lastError: Error = ConfigError.changedUnderneath
+            for _ in 0..<max(1, attempts) {
+                let loaded: Loaded
+                do { loaded = try load() } catch ConfigError.changedUnderneath { lastError = ConfigError.changedUnderneath; continue }
+                var root = loaded.root
+                try mutate(&root)
+                if version() != loaded.version { lastError = ConfigError.changedUnderneath; continue }
+                try write(root)
+                return root
+            }
+            throw lastError
         }
-        throw lastError
+    }
+
+    // MARK: - advisory lock (shared with the proxy and the CLI)
+
+    /// `<config>.lock`: created `O_EXCL` with `{"pid","at"}`, stale after 10 s or once its
+    /// holder is gone, waited for at most 2 s and then ignored — advisory, never a deadlock.
+    public var lockPath: URL { URL(fileURLWithPath: path.resolvingSymlinksInPath().path + ".lock") }
+    public static let lockStaleAfter: TimeInterval = 10
+    public static let lockWait: TimeInterval = 2
+
+    public func withLock<T>(_ body: () throws -> T) throws -> T {
+        let held = acquireLock()
+        defer { if held { unlink(lockPath.path) } }
+        return try body()
+    }
+
+    /// True when the lock was taken; false when it stayed busy past the wait (the write proceeds anyway).
+    func acquireLock(wait: TimeInterval = ConfigFile.lockWait) -> Bool {
+        let deadline = Date().addingTimeInterval(wait)
+        while true {
+            let fd = open(lockPath.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+            if fd >= 0 {
+                let body = "{\"pid\":\(getpid()),\"at\":\(Int(Date().timeIntervalSince1970 * 1000))}"
+                _ = body.withCString { Foundation.write(fd, $0, strlen($0)) }
+                close(fd)
+                return true
+            }
+            if errno != EEXIST { return false }
+            if lockIsStale() { unlink(lockPath.path); continue }
+            if Date() >= deadline { return false }
+            usleep(25_000)
+        }
+    }
+
+    /// Older than the staleness window, or held by a pid that no longer exists.
+    func lockIsStale(now: Date = Date()) -> Bool {
+        var st = stat()
+        guard stat(lockPath.path, &st) == 0 else { return true }
+        let modified = Date(timeIntervalSince1970: Double(st.st_mtimespec.tv_sec) + Double(st.st_mtimespec.tv_nsec) / 1e9)
+        if now.timeIntervalSince(modified) > ConfigFile.lockStaleAfter { return true }
+        guard let data = try? Data(contentsOf: lockPath), let json = try? JSON.parse(data), let pid = json["pid"].int, pid > 0 else { return false }
+        return kill(pid_t(pid), 0) != 0 && errno == ESRCH
     }
 
     /// Atomic replace: same-directory temp, 0600, fsync, rename over the resolved target.

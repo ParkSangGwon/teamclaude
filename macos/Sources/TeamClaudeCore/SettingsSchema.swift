@@ -1,7 +1,7 @@
 import Foundation
 
 public enum SettingsSection: String, Sendable, CaseIterable, Identifiable {
-    case general, proxy, accounts, rotation, quota, routing, logging, advanced
+    case general, proxy, accounts, rotation, quota, routing, logging, history, advanced
     public var id: String { rawValue }
     public var title: String {
         switch self {
@@ -12,6 +12,7 @@ public enum SettingsSection: String, Sendable, CaseIterable, Identifiable {
         case .quota: return "Quota"
         case .routing: return "Routing"
         case .logging: return "Logging"
+        case .history: return "History"
         case .advanced: return "Advanced"
         }
     }

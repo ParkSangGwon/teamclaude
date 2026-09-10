@@ -72,32 +72,30 @@ public enum Derived {
         return (window - remaining) / window
     }
 
+    /// The m / h / d tiering every countdown shares; `separator` sits between the two units.
+    static func tiered(minutes: Int, separator: String) -> String {
+        if minutes < 60 { return "\(minutes)m" }
+        let hrs = minutes / 60, rm = minutes % 60
+        if hrs < 24 { return rm > 0 ? "\(hrs)h\(separator)\(rm)m" : "\(hrs)h" }
+        let days = hrs / 24, rh = hrs % 24
+        return rh > 0 ? "\(days)d\(separator)\(rh)h" : "\(days)d"
+    }
+
     /// TUI `formatReset`: `45m`, `3h31m`, `2h`, `3d12h`, `3d`; empty when past or unknown.
     public static func formatReset(_ resetAt: Date?, now: Date = Date()) -> String {
         guard let resetAt else { return "" }
         let ms = resetAt.timeIntervalSince(now) * 1000
         // A date far enough out to overflow `Int` minutes comes from a broken clock, not a window.
-        guard ms.isFinite, ms < 1e18 else { return "" }
-        if ms <= 0 { return "" }
-        let mins = Int((ms / 60000).rounded(.up))
-        if mins < 60 { return "\(mins)m" }
-        let hrs = mins / 60, rm = mins % 60
-        if hrs < 24 { return rm > 0 ? "\(hrs)h\(rm)m" : "\(hrs)h" }
-        let days = hrs / 24, rh = hrs % 24
-        return rh > 0 ? "\(days)d\(rh)h" : "\(days)d"
+        guard ms.isFinite, ms < 1e18, ms > 0 else { return "" }
+        return tiered(minutes: Int((ms / 60000).rounded(.up)), separator: "")
     }
 
     /// status-renderer `formatDuration` for probe/uptime figures.
     public static func formatDuration(_ interval: TimeInterval) -> String {
-        guard interval.isFinite, interval >= 0 else { return "-" }
+        guard interval.isFinite, interval >= 0, interval < 1e15 else { return "-" }
         let totalSeconds = max(1, Int(interval.rounded()))
         if totalSeconds < 60 { return "\(totalSeconds)s" }
-        let totalMinutes = Int((Double(totalSeconds) / 60).rounded(.up))
-        if totalMinutes < 60 { return "\(totalMinutes)m" }
-        let hours = totalMinutes / 60, minutes = totalMinutes % 60
-        if hours < 24 { return minutes > 0 ? "\(hours)h\(minutes)m" : "\(hours)h" }
-        let days = hours / 24, rem = hours % 24
-        return rem > 0 ? "\(days)d\(rem)h" : "\(days)d"
+        return tiered(minutes: Int((Double(totalSeconds) / 60).rounded(.up)), separator: "")
     }
 
     public enum ResetStyle: String, Sendable, CaseIterable { case countdown, clock, both }
@@ -118,12 +116,8 @@ public enum Derived {
 
     static func spacedCountdown(_ remaining: TimeInterval) -> String {
         if remaining < 60 { return "under a minute" }
-        let mins = Int((remaining / 60).rounded(.up))
-        if mins < 60 { return "\(mins)m" }
-        let hrs = mins / 60, rm = mins % 60
-        if hrs < 24 { return rm > 0 ? "\(hrs)h \(rm)m" : "\(hrs)h" }
-        let days = hrs / 24, rh = hrs % 24
-        return rh > 0 ? "\(days)d \(rh)h" : "\(days)d"
+        guard remaining.isFinite, remaining < 1e15 else { return "" }
+        return tiered(minutes: Int((remaining / 60).rounded(.up)), separator: " ")
     }
 
     static func clockText(_ date: Date, now: Date, calendar: Calendar) -> String {
@@ -189,6 +183,152 @@ public enum Derived {
         let major = minor / pow(10, Double(exponent))
         let symbol = currency.uppercased() == "USD" ? "$" : currency.uppercased() + " "
         return symbol + String(format: "%.2f", major)
+    }
+
+    /// status-renderer `BUCKET_LABELS`: what an operator calls a bucket.
+    public static func bucketLabel(_ key: String) -> String {
+        switch key {
+        case Buckets.weekly: return "opus+"
+        case Buckets.fable: return "fable"
+        case Buckets.sonnet: return "sonnet"
+        case Buckets.fiveHour: return "5h"
+        default: return Text.safe(key, max: 24)
+        }
+    }
+
+    /// status-renderer `formatSessionBuckets`: " (opus+ 2, fable 1)" once a second family is in play.
+    public static func formatSessionBuckets(_ byBucket: [String: Int]) -> String {
+        let entries = byBucket.filter { $0.value > 0 }.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+        guard entries.count >= 2 else { return "" }
+        return " (" + entries.map { "\(bucketLabel($0.key)) \($0.value)" }.joined(separator: ", ") + ")"
+    }
+
+    /// status-renderer `formatAdaptive`, without the colour.
+    public static func formatAdaptive(_ a: AdaptiveRow) -> String {
+        var parts: [String] = []
+        let family = bucketLabel(a.bucket ?? Buckets.weekly)
+        let prefix = a.next ? "next · " : ""
+        if let w = a.weight { parts.append("\(prefix)weight \(percentInt(w))% of \(family)") } else { parts.append("\(prefix)weight n/a (all reserved, \(family))") }
+        parts.append("\(a.sessions) sess / \(a.inFlight) inflight")
+        if let h = a.headroom { parts.append("head \(String(format: "%.1f", h * 100))% of \(percentInt(a.threshold ?? 0))%") }
+        parts.append(a.planWeight.map { "plan \(safeInt($0))x" } ?? "plan unknown")
+        if let c = a.concCap { parts.append("conc \(String(format: "%.1f", c))") }
+        let line = parts.joined(separator: " · ")
+        return a.competing ? line : "(not competing) " + line
+    }
+
+    /// The current account is out of rotation but traffic already moved on: ordinary rotation, not an emergency.
+    public static func currentBlockedButRotated(_ s: StatusSnapshot) -> Bool {
+        guard s.current?.unavailable != nil, let target = s.effectiveDefaultTarget else { return false }
+        return target != s.currentAccount
+    }
+
+    /// Why rotation left `from` for `to`, in the order the router decides it: the old account's own
+    /// reason, a strictly better priority, then expiry routing. Nil when nothing explains it.
+    public static func rotationReason(from: String, to: String, previous: StatusSnapshot?, status: StatusSnapshot, now: Date = Date()) -> String? {
+        let old = previous?.account(named: from) ?? status.account(named: from)
+        let new = status.account(named: to)
+        if let code = old?.unavailable, let label = UnavailableText.label(code) {
+            let reset = code == "quota" ? old?.quota.unified5hReset.map { " · resets in \(formatReset($0, now: now))" } ?? "" : ""
+            return "\(from): \(label)\(reset)"
+        }
+        if let o = old, let n = new, n.priority < o.priority {
+            return "\(to) outranks \(from) (priority \(n.priority) < \(o.priority))"
+        }
+        if status.expiryRouting?.enabled == true, status.expiryRouting?.preempt == true {
+            return "expiry routing preferred \(to)"
+        }
+        return nil
+    }
+}
+
+// MARK: - Next-up, reset timeline, aliases
+
+public struct NextUp: Sendable, Equatable {
+    public var name: String
+    /// "prio 0 · 1 sess · pressure 0.42/s", or the adaptive scorer's own line.
+    public var reason: String
+    public var isCurrent: Bool
+}
+
+public struct ResetEntry: Sendable, Equatable, Identifiable {
+    public var id: String { "\(account)/\(bucket)" }
+    public var account: String
+    /// `5h`, `wk`, `F7`, `S7`.
+    public var bucket: String
+    public var resetAt: Date
+    /// The account is out of rotation now, so this reset brings capacity back.
+    public var freesCapacity: Bool
+}
+
+extension Derived {
+    /// Where the next unrouted request goes and why (the server's `defaultTarget`, explained).
+    public static func nextUp(_ s: StatusSnapshot) -> NextUp? {
+        guard let target = s.effectiveDefaultTarget, let acc = s.account(named: target) else { return nil }
+        var parts: [String] = []
+        if let row = s.adaptive.first(where: { $0.name == target }), row.next {
+            parts.append(formatAdaptive(row))
+        } else {
+            if target != s.currentAccount, let cur = s.currentAccount, let why = rotationReason(from: cur, to: target, previous: nil, status: s) {
+                parts.append(why)
+            }
+            parts.append("prio \(acc.priority)")
+            if acc.sessions > 0 { parts.append("\(acc.sessions) sess\(formatSessionBuckets(acc.sessionsByBucket))") }
+            if let p = acc.pressure, p > 0 { parts.append("pressure \(String(format: "%.2f", p))/s") }
+        }
+        return NextUp(name: target, reason: parts.joined(separator: " · "), isCurrent: target == s.currentAccount)
+    }
+
+    /// The fleet's elapsed share of a window: each known account's elapsed fraction, weighted by tier.
+    public static func fleetElapsed(_ q: QuotaSnapshot, key: String, window: TimeInterval, now: Date = Date()) -> Double? {
+        var weightSum = 0.0, acc = 0.0
+        for a in q.accounts {
+            guard let w = a.tier.weight, w > 0, let e = elapsedFraction(resetAt: a.buckets[key]?.resetAt, window: window, now: now) else { continue }
+            weightSum += Double(w)
+            acc += Double(w) * e
+        }
+        return weightSum > 0 ? acc / weightSum : nil
+    }
+
+    /// Every account's upcoming window resets, soonest first, so the fleet's capacity return is visible.
+    public static func resetTimeline(_ q: QuotaSnapshot, status: StatusSnapshot?, now: Date = Date(), limit: Int = 6) -> [ResetEntry] {
+        let labels: [(String, String, String?)] = [("fiveHour", "5h", nil), ("weeklyShared", "wk", nil), ("weeklyFable", "F7", Buckets.fable), ("weeklySonnet", "S7", Buckets.sonnet)]
+        var out: [ResetEntry] = []
+        for acc in q.accounts {
+            let live = status?.account(named: acc.name)
+            let frees = live?.unavailable != nil && live?.unavailable != "disabled"
+            for (key, label, ownSource) in labels {
+                guard let b = acc.buckets[key], let at = b.resetAt, at > now else { continue }
+                // A family that falls back to the shared week resets with it; listing it twice says nothing new.
+                if let ownSource, b.source != ownSource { continue }
+                out.append(ResetEntry(account: acc.name, bucket: label, resetAt: at, freesCapacity: frees))
+            }
+        }
+        return Array(out.sorted { $0.resetAt != $1.resetAt ? $0.resetAt < $1.resetAt : $0.account < $1.account }.prefix(limit))
+    }
+
+    /// Display aliases that stay unique: the local part, then the organization, then a number.
+    /// `alice@x.com` and `alicia@y.com` are `alice` / `alicia`; two `alice`s in different orgs become
+    /// `alice (Acme)` / `alice (Beta)`; otherwise `alice`, `alice 2`.
+    public static func aliases(for accounts: [(name: String, org: String?)], base: (String) -> String = { String($0.split(separator: "@").first ?? Substring($0)) }) -> [String: String] {
+        var groups: [String: [(String, String?)]] = [:]
+        var order: [String] = []
+        for a in accounts {
+            let b = base(a.name)
+            if groups[b] == nil { order.append(b) }
+            groups[b, default: []].append((a.name, a.org))
+        }
+        var out: [String: String] = [:]
+        for b in order {
+            let members = groups[b] ?? []
+            if members.count == 1 { out[members[0].0] = b; continue }
+            let orgs = members.map { $0.1 ?? "" }
+            let orgsUnique = Set(orgs).count == members.count && !orgs.contains("")
+            for (i, m) in members.enumerated() {
+                out[m.0] = orgsUnique ? "\(b) (\(m.1 ?? ""))" : (i == 0 ? b : "\(b) \(i + 1)")
+            }
+        }
+        return out
     }
 }
 

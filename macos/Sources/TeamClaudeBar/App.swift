@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Observation
 import TeamClaudeCore
 
 @main
@@ -62,12 +63,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(store: store, openSettings: { [weak self] in self?.showSettings() })
         Notifier.shared.requestAuthorization()
         store.start()
+        observeHotkeys()
         // `TEAMCLAUDE_BAR_SNAPSHOT=<dir>` renders the popover to PNG after the first
         // poll and quits: PR screenshots and a look at the layout without a click.
         if let dir = ProcessInfo.processInfo.environment["TEAMCLAUDE_BAR_SNAPSHOT"], !dir.isEmpty {
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(4))
                 store.loadConfigRoot()
+                try? await Task.sleep(for: .seconds(1))
                 Snapshot.write(store: store, to: URL(fileURLWithPath: dir))
                 NSApp.terminate(nil)
             }
@@ -91,12 +94,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.stop()
     }
 
-    /// Recreate the status item so a changed position preference takes effect.
-    func repositionStatusItem() {
-        statusItem.closePopover()
-        statusItem.remove()
-        StatusItemController.reseedPosition()
-        statusItem = StatusItemController(store: store, openSettings: { [weak self] in self?.showSettings() })
+    /// Bind the two global shortcuts to their switches, re-binding whenever a switch changes.
+    private func observeHotkeys() {
+        withObservationTracking {
+            let prefs = store.prefs
+            HotKeyCenter.shared.set(.nextAccount, enabled: prefs.hotkeyNextAccount) { [weak self] in self?.store.switchToNextAvailable() }
+            HotKeyCenter.shared.set(.togglePopover, enabled: prefs.hotkeyTogglePopover) { [weak self] in self?.statusItem.togglePopover() }
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeHotkeys() }
+        }
     }
 
     @objc func showSettings() {

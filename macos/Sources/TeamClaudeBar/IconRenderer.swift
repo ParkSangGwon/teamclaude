@@ -34,6 +34,8 @@ enum IconRenderer {
         if case .rotating = model.state { text = model.label }
         if model.state == .proxyDown { text = style == .bars ? nil : "—" }
         if model.state == .starting { text = nil }
+        // Pinned to one account: its three-letter tag leads the title at a legible size, never inside the glyph.
+        if let tag = model.tag, model.state != .starting, model.state != .proxyDown { text = [tag, text].compactMap { $0 }.joined(separator: " ") }
 
         let image = showBars ? barsImage(model, monochrome: monochrome) : nil
         let attrs: [NSAttributedString.Key: Any] = [
@@ -46,15 +48,14 @@ enum IconRenderer {
     }
 
     static func barsImage(_ model: IconModel, monochrome: Bool) -> NSImage {
-        let hasTag = model.tag != nil
-        let size = NSSize(width: 20, height: hasTag ? 18 : 16)
+        let size = NSSize(width: 20, height: 16)
         let image = NSImage(size: size, flipped: false) { rect in
             let fg: NSColor = monochrome ? .black : color(for: model.state)
             let dim = model.state == .proxyDown || model.state == .stale || model.state == .starting
             let trackAlpha: CGFloat = dim ? 0.22 : 0.28
             let fillAlpha: CGFloat = dim ? 0.4 : 1
-            let barW: CGFloat = 16, barH: CGFloat = hasTag ? 2.5 : 3, x: CGFloat = 2
-            let top: CGFloat = hasTag ? 12.5 : 9.5, bottom: CGFloat = hasTag ? 8.5 : 3.5
+            let barW: CGFloat = 16, barH: CGFloat = 3, x: CGFloat = 2
+            let top: CGFloat = 9.5, bottom: CGFloat = 3.5
             func bar(y: CGFloat, fill: Double?) {
                 let track = NSBezierPath(roundedRect: NSRect(x: x, y: y, width: barW, height: barH), xRadius: barH / 2, yRadius: barH / 2)
                 fg.withAlphaComponent(trackAlpha).setFill()
@@ -77,12 +78,6 @@ enum IconRenderer {
                 line.lineWidth = 1.5; line.lineCapStyle = .round
                 fg.withAlphaComponent(0.9).setStroke()
                 line.stroke()
-            }
-            if let tag = model.tag {
-                let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 6, weight: .bold), .foregroundColor: fg.withAlphaComponent(fillAlpha)]
-                let s = NSAttributedString(string: tag.uppercased(), attributes: attrs)
-                let w = s.size().width
-                s.draw(at: NSPoint(x: (rect.width - w) / 2, y: 0.5))
             }
             return true
         }

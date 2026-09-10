@@ -19,14 +19,13 @@ public struct IconInputs: Sendable {
     public var rotatedTo: String?
     public var pinCurrent: Bool
     public var showRemaining: Bool
-    public var warnLevel: Double
 
     public init(status: StatusSnapshot?, quota: QuotaSnapshot?, reachable: Bool, lastSuccessAt: Date?, now: Date = Date(),
                 pollInterval: TimeInterval = 30, rotatedAt: Date? = nil, rotatedTo: String? = nil,
-                pinCurrent: Bool = false, showRemaining: Bool = false, warnLevel: Double = 0.7) {
+                pinCurrent: Bool = false, showRemaining: Bool = false) {
         self.status = status; self.quota = quota; self.reachable = reachable; self.lastSuccessAt = lastSuccessAt; self.now = now
         self.pollInterval = pollInterval; self.rotatedAt = rotatedAt; self.rotatedTo = rotatedTo
-        self.pinCurrent = pinCurrent; self.showRemaining = showRemaining; self.warnLevel = warnLevel
+        self.pinCurrent = pinCurrent; self.showRemaining = showRemaining
     }
 }
 
@@ -65,29 +64,39 @@ public enum MenuBarState {
         let current = status.current
         var fiveHour: Double?
         var weekly: Double?
+        var fiveReset: Date?
+        var weekReset: Date?
         var tag: String?
         if i.pinCurrent || i.quota == nil, let cur = current {
             fiveHour = cur.quota.unified5h
             weekly = cur.quota.unified7d
+            fiveReset = cur.quota.unified5hReset
+            weekReset = cur.quota.unified7dReset
             tag = shortName(cur.name)
         } else if let q = i.quota {
             fiveHour = q.aggregate["fiveHour"]?.utilization
             weekly = q.aggregate["weeklyShared"]?.utilization
+            fiveReset = q.aggregate["fiveHour"]?.nextResetAt
+            weekReset = q.aggregate["weeklyShared"]?.nextResetAt
         }
 
-        // Severity from the same numbers the bars show, plus the fleet's ability to serve.
-        let threshold = status.switchThreshold
+        // Severity from the colour rule the bars use (the TUI's pace rule), so the icon and the
+        // popover never disagree; critical is the fleet's inability to serve or a bar at its threshold.
         let hold = Derived.isHold(status)
-        let worst = max(fiveHour ?? 0, weekly ?? 0)
-        let currentOverThreshold = current?.unavailable == "quota"
+        let fiveLevel = fiveHour.map { Derived.level(ratio: $0, resetAt: fiveReset, window: Window.fiveHour, threshold: status.thresholdFor(bucket: Buckets.fiveHour), now: i.now) }
+        let weekLevel = weekly.map { Derived.level(ratio: $0, resetAt: weekReset, window: Window.sevenDay, threshold: status.thresholdFor(bucket: Buckets.weekly), now: i.now) }
+        let worstLevel = [fiveLevel, weekLevel].compactMap { $0 }.max { Level.allCases.firstIndex(of: $0)! < Level.allCases.firstIndex(of: $1)! } ?? .green
+        let atThreshold = (fiveHour ?? 0) >= status.thresholdFor(bucket: Buckets.fiveHour) - 0.05 || (weekly ?? 0) >= status.thresholdFor(bucket: Buckets.weekly) - 0.05
+        // A blocked current account is only an emergency while nothing else can take the traffic.
+        let stuck = current?.unavailable != nil && !Derived.currentBlockedButRotated(status)
         let state: IconState
         if let age, age > staleAfter {
             state = .stale
         } else if let at = i.rotatedAt, let to = i.rotatedTo, i.now.timeIntervalSince(at) < rotatingFlashSeconds {
             state = .rotating(to: to)
-        } else if hold || currentOverThreshold || worst >= threshold - 0.05 {
+        } else if hold || stuck || atThreshold {
             state = .critical
-        } else if worst >= i.warnLevel {
+        } else if worstLevel == .orange || worstLevel == .red {
             state = .warning
         } else {
             state = .normal
@@ -110,7 +119,7 @@ public enum MenuBarState {
         parts.append("\(available)/\(status.accounts.count) accounts available")
         var tooltip = parts.joined(separator: " · ")
         switch state {
-        case .critical: tooltip = (hold ? "Critical: every account is out of rotation" : "Critical: at the switch threshold") + " · " + tooltip
+        case .critical: tooltip = (hold ? "Critical: every account is out of rotation" : stuck ? "Critical: the current account cannot serve and nothing else can take over" : "Critical: at the switch threshold") + " · " + tooltip
         case .warning: tooltip = "Warning · " + tooltip
         case .stale: tooltip = "Data is \(Derived.formatDuration(age ?? 0)) old — the proxy answered slowly or not at all · " + tooltip
         case .rotating(let to): tooltip = "Rotated to \(to) · " + tooltip

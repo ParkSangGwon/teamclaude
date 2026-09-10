@@ -6,6 +6,7 @@ import TeamClaudeCore
 /// and the live / restart tag. Commits go back as JSON (nil = delete the key).
 struct FieldRow: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.snapshotMode) private var snapshotMode
     let field: SettingField
     let value: JSON
     let onCommit: (JSON?) -> Void
@@ -19,17 +20,32 @@ struct FieldRow: View {
                 Spacer()
                 AppliesTag(applies: applies)
             }
-            control.accessibilityLabel(field.label)
+            // ImageRenderer draws AppKit-backed fields as placeholders; the PNGs show the value as text instead.
+            if snapshotMode {
+                Text(snapshotText).font(.system(size: 12, design: .monospaced)).foregroundStyle(.primary)
+            } else {
+                control.accessibilityLabel(field.label)
+            }
             Text(field.help).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 8)
+    }
+
+    private var snapshotText: String {
+        switch field.kind {
+        case .toggle: return value.bool == true ? "on" : "off"
+        case .secret: return value.string.map { _ in "•••••" } ?? "(not set)"
+        case .stringList: return value.stringArray.isEmpty ? "(none)" : value.stringArray.joined(separator: ", ")
+        case .keyedNumbers, .objectList: return value.isNull ? "(default)" : value.pretty()
+        default: return value.string ?? value.double.map { $0 == $0.rounded() ? String(Derived.safeInt($0)) : String($0) } ?? "(default)"
+        }
     }
 
     @ViewBuilder
     private var control: some View {
         switch field.kind {
         case .toggle:
-            ToggleEditor(value: value.bool ?? false, onCommit: { onCommit(.bool($0)) })
+            Toggle(field.label, isOn: Binding(get: { value.bool ?? false }, set: { onCommit(.bool($0)) })).labelsHidden().toggleStyle(.switch).controlSize(.small)
         case .int(let min, let max, let step, let unit):
             NumberEditor(value: value.double, integer: true, min: min.map(Double.init), max: max.map(Double.init), step: Double(step), unit: unit, onCommit: { onCommit($0.map(JSON.number)) })
         case .double(let min, let max, let step, let unit):
@@ -39,7 +55,9 @@ struct FieldRow: View {
         case .secret:
             SecretEditor(value: value.string, canRegenerate: field.id == "proxy.apiKey", onCommit: { onCommit($0.map(JSON.string)) })
         case .picker(let options):
-            PickerEditor(options: options, value: value.string ?? options.first ?? "", onCommit: { onCommit(.string($0)) })
+            Picker(field.label, selection: Binding(get: { value.string ?? options.first ?? "" }, set: { if $0 != value.string { onCommit(.string($0)) } })) {
+                ForEach(options, id: \.self) { Text($0).tag($0) }
+            }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 360)
         case .stringList:
             TextEditorRow(value: value.stringArray.joined(separator: ", "), placeholder: "comma-separated", onCommit: { text in
                 let items = text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -61,18 +79,6 @@ struct AppliesTag: View {
         case .live: Label("applies live", systemImage: "bolt.fill").font(.system(size: 10, weight: .semibold)).foregroundStyle(Level.green.color)
         default: Label("restart", systemImage: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).foregroundStyle(Level.orange.color)
         }
-    }
-}
-
-struct ToggleEditor: View {
-    var value: Bool
-    var onCommit: (Bool) -> Void
-    @State private var local = false
-    var body: some View {
-        Toggle("", isOn: $local).labelsHidden().toggleStyle(.switch).controlSize(.small)
-            .onAppear { local = value }
-            .onChange(of: value) { _, new in local = new }
-            .onChange(of: local) { _, new in if new != value { onCommit(new) } }
     }
 }
 
@@ -181,20 +187,6 @@ struct SecretEditor: View {
         .confirmationDialog("Regenerate the proxy key?", isPresented: $confirmRegenerate) {
             Button("Regenerate", role: .destructive) { onCommit(ConfigFile.newProxyKey()) }
         } message: { Text("Remote clients and the dashboard need the new key. The app switches to it automatically.") }
-    }
-}
-
-struct PickerEditor: View {
-    var options: [String]
-    var value: String
-    var onCommit: (String) -> Void
-    @State private var local = ""
-    var body: some View {
-        Picker("", selection: $local) { ForEach(options, id: \.self) { Text($0).tag($0) } }
-            .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 360)
-            .onAppear { local = value }
-            .onChange(of: value) { _, new in local = new }
-            .onChange(of: local) { _, new in if new != value { onCommit(new) } }
     }
 }
 
@@ -322,16 +314,42 @@ struct SchemaPane: View {
     let section: SettingsSection
     var fields: [SettingField] { SettingsSchema.fields(in: section) }
 
+    /// Tuning knobs that only matter in one mode live in a collapsed group, disabled while that mode is off.
+    static let groups: [(prefix: String, title: String, gate: (AppStore) -> Bool, note: String)] = [
+        ("stormRamp.", "Storm control", { $0.configValue(["stormRamp", "enabled"]).bool == true }, "Storm control is off; turn it on above to tune these."),
+        ("adaptiveDistribution.", "Adaptive distribution", { $0.configValue(["distributeSessions"]).string == "adaptive" }, "Session distribution is not in adaptive mode; these values are ignored until it is."),
+    ]
+
     var body: some View {
-        ForEach(fields) { field in
-            FieldRow(field: field, value: displayValue(field)) { new in
-                if let why = SchemaPane.validate(field, value: new) {
-                    store.showToast(.error, "\(field.label): \(why)")
-                    return
-                }
-                Task { await store.apply(SchemaPane.change(for: field, value: new), label: field.label) }
-            }
+        let grouped = SchemaPane.groups.filter { g in fields.contains { $0.id.hasPrefix(g.prefix) } }
+        ForEach(fields.filter { f in !grouped.contains { f.id.hasPrefix($0.prefix) && f.id != $0.prefix + "enabled" } }) { field in
+            row(field)
             Divider()
+        }
+        ForEach(Array(grouped.enumerated()), id: \.offset) { _, g in
+            let members = fields.filter { $0.id.hasPrefix(g.prefix) && $0.id != g.prefix + "enabled" }
+            let on = g.gate(store)
+            DisclosureGroup {
+                if !on { Text(g.note).font(.system(size: 11)).foregroundStyle(.secondary).padding(.vertical, 4) }
+                ForEach(members) { field in
+                    row(field).disabled(!on).opacity(on ? 1 : 0.6)
+                    Divider()
+                }
+            } label: {
+                HStack { Text(g.title).font(.system(size: 13, weight: .semibold)); Text("\(members.count) settings").font(.system(size: 11)).foregroundStyle(.secondary); Spacer(); AppliesTag(applies: .restart) }
+            }
+            .padding(.vertical, 8)
+            Divider()
+        }
+    }
+
+    private func row(_ field: SettingField) -> some View {
+        FieldRow(field: field, value: displayValue(field)) { new in
+            if let why = SchemaPane.validate(field, value: new) {
+                store.showToast(.error, "\(field.label): \(why)")
+                return
+            }
+            Task { await store.apply(SettingsPlanner.change(for: field, value: new), label: field.label) }
         }
     }
 
@@ -373,26 +391,4 @@ struct SchemaPane: View {
         return raw
     }
 
-    static func change(for field: SettingField, value: JSON?) -> SettingChange {
-        switch field.id {
-        case "switchThreshold":
-            return .threshold(percent: value?.double ?? 98)
-        case "switchThresholds":
-            // An empty bucket becomes `bucket=default` (drop the override); an empty `default` is simply
-            // not sent, since the CLI refuses `default=default` and keeps the scalar it has.
-            var table: [String: Double?] = [:]
-            for key in Buckets.all { table.updateValue(value?[key].double.map { $0 * 100 }, forKey: key) }
-            if let d = value?["default"].double { table["default"] = d * 100 }
-            return .thresholdTable(table)
-        case "distributeSessions":
-            return .distribute(value?.string ?? "off")
-        case "quotaProbeSeconds":
-            return .probe(seconds: Int(value?.double ?? 0))
-        case "warmupSeconds":
-            let secs = Int(value?.double ?? 0)
-            return secs <= 0 ? .warmupOff : .warmupInterval(seconds: secs)
-        default:
-            return .json(path: field.path, value: value, applies: field.applies)
-        }
-    }
 }

@@ -3,7 +3,7 @@ import Foundation
 /// What the app should notify about. `id` doubles as the dedupe key: the
 /// notification centre replaces a pending notification with the same id.
 public struct Alert: Sendable, Equatable {
-    public enum Kind: String, Sendable { case fleetLevel, rotation, accountError, hold, proxyDown, proxyBack, spend }
+    public enum Kind: String, Sendable { case fleetLevel, rotation, accountError, hold, proxyDown, proxyBack, spend, accountLeft, accountBack, probeFailed }
     public var kind: Kind
     public var id: String
     public var title: String
@@ -21,6 +21,12 @@ public struct AlertPrefs: Sendable, Equatable, Codable {
     public var proxyDown = true
     public var proxyBack = false
     public var spend = true
+    /// An account dropping out of rotation (threshold, 429 hold, cap); off by default, it is routine.
+    public var accountLeft = false
+    /// An account's window reset (or hold cleared) bringing it back.
+    public var accountBack = false
+    /// The quota probe failing for an account, once per failure streak.
+    public var probeFailed = true
     public var pausedUntil: Date? = nil
 
     public init() {}
@@ -37,6 +43,9 @@ public struct AlertPrefs: Sendable, Equatable, Codable {
         proxyDown = try c.decodeIfPresent(Bool.self, forKey: .proxyDown) ?? proxyDown
         proxyBack = try c.decodeIfPresent(Bool.self, forKey: .proxyBack) ?? proxyBack
         spend = try c.decodeIfPresent(Bool.self, forKey: .spend) ?? spend
+        accountLeft = try c.decodeIfPresent(Bool.self, forKey: .accountLeft) ?? accountLeft
+        accountBack = try c.decodeIfPresent(Bool.self, forKey: .accountBack) ?? accountBack
+        probeFailed = try c.decodeIfPresent(Bool.self, forKey: .probeFailed) ?? probeFailed
         pausedUntil = try c.decodeIfPresent(Date.self, forKey: .pausedUntil)
     }
 
@@ -54,6 +63,9 @@ public struct AlertState: Sendable, Equatable, Codable {
     public var downStreak = 0
     public var announcedDown = false
     public var spendSeen: [String] = []
+    /// account → its `unavailable` code at the last evaluation (absent = in rotation).
+    public var unavailableByAccount: [String: String] = [:]
+    public var probeErrorAccounts: [String] = []
 
     public init() {}
 
@@ -69,6 +81,8 @@ public struct AlertState: Sendable, Equatable, Codable {
         downStreak = try c.decodeIfPresent(Int.self, forKey: .downStreak) ?? downStreak
         announcedDown = try c.decodeIfPresent(Bool.self, forKey: .announcedDown) ?? announcedDown
         spendSeen = try c.decodeIfPresent([String].self, forKey: .spendSeen) ?? spendSeen
+        unavailableByAccount = try c.decodeIfPresent([String: String].self, forKey: .unavailableByAccount) ?? unavailableByAccount
+        probeErrorAccounts = try c.decodeIfPresent([String].self, forKey: .probeErrorAccounts) ?? probeErrorAccounts
     }
 }
 
@@ -155,10 +169,9 @@ public enum AlertEngine {
         let current = status.effectiveDefaultTarget
         if let prev = s.lastCurrent, let cur = current, prev != cur, !seeding, cur != inputs.appSwitchedTo {
             if prefs.rotation {
-                let reason = inputs.previous?.account(named: prev)?.unavailable.flatMap(UnavailableText.label)
-                    ?? status.account(named: prev)?.unavailable.flatMap(UnavailableText.label)
+                let reason = Derived.rotationReason(from: prev, to: cur, previous: inputs.previous, status: status, now: inputs.now)
                 emit(Alert(kind: .rotation, id: "rotate.\(prev).\(cur)", title: "Rotated: \(prev) → \(cur)",
-                           body: reason.map { "\(prev): \($0)" } ?? "Rotation moved to \(cur).", sound: true))
+                           body: reason ?? "Rotation moved to \(cur).", sound: true))
             }
         }
         s.lastCurrent = current
@@ -169,6 +182,32 @@ public enum AlertEngine {
             emit(Alert(kind: .accountError, id: "acct.error.\(name)", title: "\(name) needs a re-login", body: "The account is in an error state. Open Settings → Accounts.", sound: false))
         }
         s.errorAccounts = errors
+
+        // Per-account rotation transitions: out (threshold, 429 hold, cap) and back (window reset, hold cleared).
+        var nowUnavailable: [String: String] = [:]
+        for a in status.accounts {
+            let before = s.unavailableByAccount[a.name]
+            if let code = a.unavailable {
+                nowUnavailable[a.name] = code
+                if before == nil, !seeding, prefs.accountLeft, code != "disabled", code != "error" {
+                    let reset = code == "quota" ? a.quota.unified5hReset.map { " · resets in \(Derived.formatReset($0, now: inputs.now))" } ?? "" : ""
+                    emit(Alert(kind: .accountLeft, id: "acct.left.\(a.name)", title: "\(a.name) left rotation",
+                               body: (UnavailableText.label(code) ?? code) + reset, sound: false))
+                }
+            } else if let code = before, !seeding, prefs.accountBack, code != "disabled", code != "error" {
+                emit(Alert(kind: .accountBack, id: "acct.back.\(a.name)", title: "\(a.name) is back in rotation",
+                           body: code == "quota" ? "Its window reset." : "\(UnavailableText.label(code) ?? code) cleared.", sound: false))
+            }
+        }
+        s.unavailableByAccount = nowUnavailable
+
+        // The quota probe failing for an account: its bars are going stale.
+        let failing = (status.probe?.accounts ?? []).filter { $0.error != nil }
+        for p in failing where !s.probeErrorAccounts.contains(p.name) && !seeding && prefs.probeFailed {
+            emit(Alert(kind: .probeFailed, id: "probe.\(p.name)", title: "Quota probe failing for \(p.name)",
+                       body: p.error ?? "The probe returned an error; the account's bars stop updating until it recovers.", sound: false))
+        }
+        s.probeErrorAccounts = failing.map(\.name)
 
         // Every account out of rotation.
         let hold = Derived.isHold(status)

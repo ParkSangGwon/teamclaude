@@ -16,10 +16,10 @@ final class MenuBarStateTests: XCTestCase {
 
     private func inputs(status: StatusSnapshot? = nil, quota: QuotaSnapshot? = nil, reachable: Bool = true, age: TimeInterval? = 1,
                         pollInterval: TimeInterval = 30, rotatedAt: Date? = nil, rotatedTo: String? = nil,
-                        pinCurrent: Bool = false, showRemaining: Bool = false, warnLevel: Double = 0.7) -> IconInputs {
+                        pinCurrent: Bool = false, showRemaining: Bool = false) -> IconInputs {
         IconInputs(status: status ?? twoAccounts, quota: quota ?? makeQuota(fiveHour: 0.3, weekly: 0.4), reachable: reachable,
                    lastSuccessAt: age.map { now.addingTimeInterval(-$0) }, now: now, pollInterval: pollInterval,
-                   rotatedAt: rotatedAt, rotatedTo: rotatedTo, pinCurrent: pinCurrent, showRemaining: showRemaining, warnLevel: warnLevel)
+                   rotatedAt: rotatedAt, rotatedTo: rotatedTo, pinCurrent: pinCurrent, showRemaining: showRemaining)
     }
 
     func testUnreachableWithOldDataIsProxyDown() {
@@ -115,14 +115,25 @@ final class MenuBarStateTests: XCTestCase {
         let m = MenuBarState.compute(inputs(status: s, quota: makeQuota(fiveHour: 0.2, weekly: 0.2)))
         XCTAssertEqual(m.state, .critical)
         XCTAssertEqual(m.label, "20%!")
-        XCTAssertTrue(m.tooltip.hasPrefix("Critical: at the switch threshold"))
+        XCTAssertTrue(m.tooltip.hasPrefix("Critical: the current account cannot serve and nothing else can take over"), m.tooltip)
+        // Rotation already moved on (a routing target other than the blocked current account): ordinary, not critical.
+        let rotated = makeStatus(current: "bob", accounts: [accountJSON("alice", fiveHour: 0.1), accountJSON("bob", unavailable: "quota", fiveHour: 0.99)], extra: ["defaultTarget": .string("alice")])
+        XCTAssertEqual(MenuBarState.compute(inputs(status: rotated, quota: makeQuota(fiveHour: 0.2, weekly: 0.2))).state, .normal)
     }
 
     func testWarningLevelIsConfigurable() {
-        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.5), warnLevel: 0.5)).state, .warning)
-        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.5), warnLevel: 0.51)).state, .normal)
+        // Severity follows the bars' own colour rule (the TUI pace rule): without a window, 70/90 bands.
+        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.75))).state, .normal, "yellow (a little ahead) is not a warning")
+        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.91))).state, .warning)
+        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.94))).state, .critical, "within five points of the 98% threshold")
+        // With a window, pace decides: 60% used with 90% of the 5-hour window elapsed is green.
+        let lateReset = Date().addingTimeInterval(Window.fiveHour * 0.1)
+        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.6, nextResetAt: lateReset))).state, .normal)
+        let earlyReset = Date().addingTimeInterval(Window.fiveHour * 0.9)
+        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.6, nextResetAt: earlyReset))).state, .warning, "60% used with 10% of the window gone runs far ahead of pace")
         XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.69))).state, .normal)
-        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.7))).state, .warning)
+        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.7))).state, .normal, "the yellow band starts at 70%")
+        XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.9))).state, .warning, "the red band starts at 90%")
     }
 
     func testFleetSourceByDefault() {

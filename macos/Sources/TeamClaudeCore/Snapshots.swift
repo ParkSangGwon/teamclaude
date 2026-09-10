@@ -20,6 +20,14 @@ public struct StatusSnapshot: Sendable, Equatable {
     public var sessions: SessionsInfo?
     public var blockedModels: [String]
     public var accounts: [Account]
+    public var expiryRouting: ExpiryRoutingInfo?
+    /// Adaptive distribution's per-account scoring (1.1.18+, only in adaptive mode).
+    public var adaptive: [AdaptiveRow]
+    public var upstreamPool: UpstreamPool?
+    /// Per-client-key consumption, keyed by the client name.
+    public var clients: [ClientUsage]
+    /// Per usage-dimension consumption: one row per (dimension, value).
+    public var usageDimensions: [DimensionUsage]
     public var raw: JSON
 
     public init(json: JSON) throws {
@@ -31,17 +39,23 @@ public struct StatusSnapshot: Sendable, Equatable {
         currentAccount = json["currentAccount"].string.map(Text.safe)
         defaultTarget = json["defaultTarget"].string.map(Text.safe)
         switchThreshold = json["switchThreshold"].double ?? 0.98
-        if let table = json["switchThresholds"].object {
-            var t: [String: Double] = [:]
-            for (k, v) in table { if let d = v.double { t[k] = d } }
-            switchThresholds = t
-        } else {
-            switchThresholds = nil
-        }
+        switchThresholds = json["switchThresholds"].object?.compactMapValues(\.double)
         routes = (json["routes"].array ?? []).map(Route.init(json:))
         sessions = json["sessions"].object.map { _ in SessionsInfo(json: json["sessions"]) }
         blockedModels = json["blockedModels"].stringArray.map { Text.safe($0, max: 64) }
         accounts = list.map(Account.init(json:))
+        expiryRouting = json["expiryRouting"].object.map { _ in ExpiryRoutingInfo(json: json["expiryRouting"]) }
+        adaptive = (json["adaptive"].array ?? []).filter { $0.object != nil }.map(AdaptiveRow.init(json:))
+        upstreamPool = json["upstreamPool"].object.map { _ in UpstreamPool(json: json["upstreamPool"]) }
+        clients = (json["clients"].object ?? [:]).compactMap { name, v in v.object == nil ? nil : ClientUsage(name: Text.safe(name), json: v) }
+            .sorted { $0.name < $1.name }
+        var dims: [DimensionUsage] = []
+        for (dimension, values) in json["usageDimensions"].object ?? [:] {
+            for (value, v) in values.object ?? [:] where v.object != nil {
+                dims.append(DimensionUsage(dimension: Text.safe(dimension, max: 64), value: Text.safe(value, max: 64), json: v))
+            }
+        }
+        usageDimensions = dims.sorted { ($0.dimension, $0.value) < ($1.dimension, $1.value) }
     }
 
     /// True on 1.1.18+, where the server reports where an unrouted request lands.
@@ -73,12 +87,130 @@ public struct ServerInfo: Sendable, Equatable {
     public var uptimeSeconds: Int?
     public var port: Int?
     public var upstream: String?
+    /// The running proxy's package version (reported from 1.1.19 on); nil on older servers.
+    public var version: String?
+    public var eventLoop: EventLoopInfo?
 
     init(json: JSON) {
         startedAt = json["startedAt"].date
         uptimeSeconds = json["uptimeSeconds"].int
         port = json["port"].int
         upstream = json["upstream"].string
+        version = json["version"].string.map { Text.safe($0, max: 32) }
+        eventLoop = json["eventLoop"].object.map { _ in EventLoopInfo(json: json["eventLoop"]) }
+    }
+}
+
+/// `server.eventLoop`: how far behind the proxy's event loop has been running.
+public struct EventLoopInfo: Sendable, Equatable {
+    public var lastLagMs: Int
+    public var maxLagMs: Int
+    public var stallCount: Int
+    public var lastStallAt: Date?
+    public var warnLagMs: Int
+
+    init(json: JSON) {
+        lastLagMs = json["lastLagMs"].int ?? 0
+        maxLagMs = json["maxLagMs"].int ?? 0
+        stallCount = json["stallCount"].int ?? 0
+        lastStallAt = json["lastStallAt"].date
+        warnLagMs = json["warnLagMs"].int ?? 250
+    }
+
+    public var lagging: Bool { lastLagMs > warnLagMs }
+}
+
+/// `upstreamPool`: the admission queue in front of the upstream connections.
+public struct UpstreamPool: Sendable, Equatable {
+    public var active: Int
+    public var queued: Int
+    public var origins: Int
+    public var perOriginLimit: Int
+    public var maxQueue: Int
+
+    init(json: JSON) {
+        active = json["active"].int ?? 0
+        queued = json["queued"].int ?? 0
+        origins = json["origins"].int ?? 0
+        perOriginLimit = json["perOriginLimit"].int ?? 0
+        maxQueue = json["maxQueue"].int ?? 0
+    }
+}
+
+public struct ExpiryRoutingInfo: Sendable, Equatable {
+    public var enabled: Bool
+    public var tolerance: Double
+    public var preempt: Bool
+
+    init(json: JSON) {
+        enabled = json["enabled"].bool ?? false
+        tolerance = json["tolerance"].double ?? 1.5
+        preempt = json["preempt"].bool ?? false
+    }
+}
+
+/// One row of `status.adaptive` (status-renderer `formatAdaptive`).
+public struct AdaptiveRow: Sendable, Equatable {
+    public var name: String
+    public var next: Bool
+    public var weight: Double?
+    public var headroom: Double?
+    public var threshold: Double?
+    public var sessions: Int
+    public var inFlight: Int
+    public var planWeight: Double?
+    public var concCap: Double?
+    public var competing: Bool
+    public var bucket: String?
+
+    init(json: JSON) {
+        name = Text.safe(json["name"].string ?? "")
+        next = json["next"].bool ?? false
+        weight = json["weight"].double
+        headroom = json["headroom"].double
+        threshold = json["threshold"].double
+        sessions = json["sessions"].int ?? 0
+        inFlight = json["inFlight"].int ?? 0
+        planWeight = json["planWeight"].double
+        concCap = json["concCap"].double
+        competing = json["competing"].bool ?? true
+        bucket = json["bucket"].string
+    }
+}
+
+/// Consumption booked under one client key.
+public struct ClientUsage: Sendable, Equatable {
+    public var name: String
+    public var requests: Int
+    public var inputTokens: Int
+    public var outputTokens: Int
+    public var lastUsed: Date?
+
+    init(name: String, json: JSON) {
+        self.name = name
+        requests = json["requests"].int ?? 0
+        inputTokens = json["inputTokens"].int ?? 0
+        outputTokens = json["outputTokens"].int ?? 0
+        lastUsed = json["lastUsed"].date
+    }
+}
+
+/// Consumption booked under one value of one usage dimension (`project: project-3`).
+public struct DimensionUsage: Sendable, Equatable {
+    public var dimension: String
+    public var value: String
+    public var requests: Int
+    public var inputTokens: Int
+    public var outputTokens: Int
+    public var lastUsed: Date?
+
+    init(dimension: String, value: String, json: JSON) {
+        self.dimension = dimension
+        self.value = value
+        requests = json["requests"].int ?? 0
+        inputTokens = json["inputTokens"].int ?? 0
+        outputTokens = json["outputTokens"].int ?? 0
+        lastUsed = json["lastUsed"].date
     }
 }
 
@@ -157,6 +289,8 @@ public struct SessionsInfo: Sendable, Equatable {
     public var draining: Int
     public var perAccount: [Int: Int]
     public var starvedMax: Int
+    /// Present when `proxy.sessionDetail` is on.
+    public var items: [SessionItem]
 
     init(json: JSON) {
         known = json["known"].int ?? 0
@@ -169,7 +303,41 @@ public struct SessionsInfo: Sendable, Equatable {
         for (k, v) in json["perAccount"].object ?? [:] { if let i = Int(k), let n = v.int { per[i] = n } }
         perAccount = per
         starvedMax = json["starvedMax"].int ?? 0
+        items = (json["items"].array ?? []).filter { $0.object != nil }.map(SessionItem.init(json:))
     }
+}
+
+/// One Claude Code session the proxy tracks (`sessions.items[]`).
+public struct SessionItem: Sendable, Equatable {
+    public var id: String
+    public var active: Bool
+    public var inFlight: Int
+    public var requests: Int
+    public var firstSeen: Date?
+    public var lastSeen: Date?
+    public var client: String?
+    public var project: String?
+    /// bucket → account index the session is pinned to.
+    public var pins: [String: Int]
+    public var starved: Int
+    /// bucket → context tokens of the last request, the size of what the session carries.
+    public var context: [String: Int]
+
+    init(json: JSON) {
+        id = Text.safe(json["id"].string ?? "", max: 64)
+        active = json["active"].bool ?? false
+        inFlight = json["inFlight"].int ?? 0
+        requests = json["requests"].int ?? 0
+        firstSeen = json["firstSeen"].date
+        lastSeen = json["lastSeen"].date
+        client = json["client"].string.map { Text.safe($0, max: 48) }
+        project = json["dimensions"]["project"].string.map { Text.safe($0, max: 64) }
+        pins = (json["pins"].object ?? [:]).compactMapValues(\.int)
+        starved = json["starved"].int ?? 0
+        context = (json["tokens"].object ?? [:]).compactMapValues { $0["context"].int }
+    }
+
+    public var shortId: String { String(id.prefix(8)) }
 }
 
 public struct Account: Sendable, Equatable {
@@ -190,6 +358,10 @@ public struct Account: Sendable, Equatable {
     public var rateLimitedUntil: Date?
     public var pausedUntil: Date?
     public var entitlementDeniedUntil: Date?
+    /// Expiry pressure: quota the account will lose per second at the coming reset (1.1.18+).
+    public var pressure: Double?
+    /// bucket → sessions pinned to this account for that bucket.
+    public var sessionsByBucket: [String: Int]
     public var raw: JSON
 
     init(json: JSON) {
@@ -208,6 +380,8 @@ public struct Account: Sendable, Equatable {
         rateLimitedUntil = json["rateLimitedUntil"].date
         pausedUntil = json["pausedUntil"].date
         entitlementDeniedUntil = json["entitlementDeniedUntil"].date
+        pressure = json["pressure"].double
+        sessionsByBucket = (json["sessionsByBucket"].object ?? [:]).compactMapValues(\.int)
     }
 
     public var isApiKey: Bool { type == "apikey" }
@@ -243,11 +417,7 @@ public struct Quota: Sendable, Equatable {
         unified7dSonnetReset = json["unified7dSonnetReset"].date
         unified7dFableReset = json["unified7dFableReset"].date
         unifiedStatus = json["unifiedStatus"].string
-        var scoped: [String: ScopedBucket] = [:]
-        for (family, v) in json["scopedWeekly"].object ?? [:] {
-            scoped[family] = ScopedBucket(utilization: v["utilization"].double, resetAt: v["resetAt"].date)
-        }
-        scopedWeekly = scoped
+        scopedWeekly = (json["scopedWeekly"].object ?? [:]).mapValues { ScopedBucket(utilization: $0["utilization"].double, resetAt: $0["resetAt"].date) }
         tokensLimit = json["tokensLimit"].double
         tokensRemaining = json["tokensRemaining"].double
         requestsLimit = json["requestsLimit"].double
@@ -331,9 +501,7 @@ public struct QuotaSnapshot: Sendable, Equatable {
         guard let list = json["accounts"].array else { throw SnapshotError.notQuota }
         raw = json
         accounts = list.map(QuotaAccount.init(json:))
-        var agg: [String: Aggregate] = [:]
-        for (k, v) in json["aggregate"].object ?? [:] { if v.object != nil { agg[k] = Aggregate(json: v) } }
-        aggregate = agg
+        aggregate = (json["aggregate"].object ?? [:]).compactMapValues { $0.object == nil ? nil : Aggregate(json: $0) }
         unknownTiers = (json["unknownTiers"].array ?? []).compactMap { $0["name"].string.map(Text.safe) }
         warmup = json["warmup"]
     }
@@ -358,9 +526,7 @@ public struct QuotaAccount: Sendable, Equatable {
         disabled = json["disabled"].bool ?? false
         status = json["status"].string
         tier = Tier(json: json["tier"])
-        var b: [String: Bucket] = [:]
-        for (k, v) in json["buckets"].object ?? [:] { if v.object != nil { b[k] = Bucket(json: v) } }
-        buckets = b
+        buckets = (json["buckets"].object ?? [:]).compactMapValues { $0.object == nil ? nil : Bucket(json: $0) }
     }
 }
 

@@ -23,7 +23,7 @@ final class SettingsPlannerTests: XCTestCase {
         XCTAssertEqual(argv(.probe(seconds: 0)), ["probe", "off"])
         XCTAssertEqual(argv(.probe(seconds: -1)), ["probe", "off"])
         XCTAssertEqual(argv(.probe(seconds: 330)), ["probe", "330"])
-        XCTAssertEqual(argv(.warmupOff), ["warmup", "off"])
+        XCTAssertEqual(argv(.warmupInterval(seconds: -1)), ["warmup", "off"])
         XCTAssertEqual(argv(.warmupInterval(seconds: 600)), ["warmup", "600"])
         XCTAssertEqual(argv(.warmupInterval(seconds: 0)), ["warmup", "off"])
         let reset = argv(.warmupReset(time: "15:30", timezone: "Europe/Moscow"))
@@ -85,7 +85,7 @@ final class SettingsPlannerTests: XCTestCase {
     func testProbeAndWarmupJSON() throws {
         XCTAssertEqual(try mutated(.probe(seconds: 330))["quotaProbeSeconds"], .number(330))
         XCTAssertEqual(try mutated(.probe(seconds: -5))["quotaProbeSeconds"], .number(0))
-        XCTAssertEqual(try mutated(.warmupOff)["warmupSeconds"], .number(0))
+        XCTAssertEqual(try mutated(.warmupInterval(seconds: 0))["warmupSeconds"], .number(0))
 
         XCTAssertNotNil(config()["warmupSchedule"].object, "the fixture starts with a schedule")
         let interval = try mutated(.warmupInterval(seconds: 600))

@@ -15,9 +15,15 @@ struct RoutingPane: View {
             if routes.isEmpty {
                 Text("No routes — every model rotates across all accounts. Families the proxy meters separately (Fable, Sonnet) get their own weekly bucket automatically.").font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            ForEach(Array(routes.enumerated()), id: \.offset) { _, r in
+            ForEach(Array(routes.enumerated()), id: \.offset) { i, r in
                 let live = store.status?.routes.first { $0.name == r["name"].string }
                 HStack(alignment: .top) {
+                    // First match wins, so the order is the rule: up/down re-writes the array and reloads.
+                    VStack(spacing: 2) {
+                        Button { move(i, by: -1) } label: { Image(systemName: "chevron.up") }.buttonStyle(.plain).disabled(i == 0).help("Move up (matched earlier)")
+                        Button { move(i, by: 1) } label: { Image(systemName: "chevron.down") }.buttonStyle(.plain).disabled(i == routes.count - 1).help("Move down (matched later)")
+                    }
+                    .font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 2)
                     Circle().fill(Color.route(r["color"].string)).frame(width: 8, height: 8).padding(.top, 5)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
@@ -47,6 +53,14 @@ struct RoutingPane: View {
         .confirmationDialog("Remove route \(confirmRemove ?? "")?", isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
             Button("Remove", role: .destructive) { if let n = confirmRemove { Task { await store.apply(.routeRemove(name: n), label: "Route \(n)") } } }
         }
+    }
+
+    private func move(_ index: Int, by delta: Int) {
+        var order = routes
+        let target = index + delta
+        guard order.indices.contains(index), order.indices.contains(target) else { return }
+        order.swapAt(index, target)
+        Task { await store.apply(.json(path: ["routes"], value: .array(order), applies: .live), label: "Route order") }
     }
 
 }

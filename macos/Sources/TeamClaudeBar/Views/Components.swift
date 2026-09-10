@@ -152,14 +152,15 @@ struct UsageRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(title).font(.system(size: 13, weight: .medium))
+                Text(title).font(.system(size: 12, weight: .medium))
                 if let tag { Chip(text: tag) }
                 if let subtitle { Text(subtitle).font(.system(size: 10)).foregroundStyle(.secondary) }
                 Spacer()
+                // The number is what the card is for: the heaviest element on it.
                 if let ratio {
-                    Text(Derived.formatPercent(ratio)).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(level(ratio).color)
+                    Text(Derived.formatPercent(ratio)).font(.system(size: 17, weight: .bold)).monospacedDigit().foregroundStyle(level(ratio).color)
                 } else {
-                    Text("—").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                    Text("—").font(.system(size: 17, weight: .bold)).foregroundStyle(.secondary)
                 }
             }
             if let ratio {

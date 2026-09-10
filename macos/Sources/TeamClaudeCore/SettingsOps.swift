@@ -14,7 +14,7 @@ public enum SettingChange: Sendable, Equatable {
     /// bucket → percent; nil means "back to default".
     case thresholdTable([String: Double?])
     case probe(seconds: Int)
-    case warmupOff
+    /// 0 or less turns keep-warm off.
     case warmupInterval(seconds: Int)
     case warmupReset(time: String, timezone: String)
     case warmupRolling(time: String, timezone: String)
@@ -51,8 +51,6 @@ public enum SettingsPlanner {
             return pairs.isEmpty ? nil : ["threshold"] + pairs
         case .probe(let secs):
             return ["probe", secs <= 0 ? "off" : String(secs)]
-        case .warmupOff:
-            return ["warmup", "off"]
         case .warmupInterval(let secs):
             return ["warmup", secs <= 0 ? "off" : String(secs)]
         case .warmupReset(let time, let tz):
@@ -107,8 +105,6 @@ public enum SettingsPlanner {
             return .patch(path: ["switchThreshold"], value: .object(obj), .live)
         case .probe(let secs):
             return .patch(path: ["quotaProbeSeconds"], value: .number(Double(max(0, secs))), .live)
-        case .warmupOff:
-            return .patch(path: ["warmupSeconds"], value: .number(0), .live)
         case .warmupInterval(let secs):
             return .patch(path: ["warmupSeconds"], value: .number(Double(max(0, secs))), .live)
         case .warmupReset(let time, let tz):
@@ -144,8 +140,33 @@ public enum SettingsPlanner {
     }
 
     static func formatPercent(_ pct: Double) -> String {
-        if pct == pct.rounded() { return String(Int(pct)) }
+        if pct == pct.rounded() { return String(Derived.safeInt(pct)) }
         return String(format: "%.1f", pct)
+    }
+
+    /// The change a schema field's new value means. Fields flagged `cli` map to their verb here —
+    /// the one place that knows the verbs — and everything else is a JSON patch.
+    public static func change(for field: SettingField, value: JSON?) -> SettingChange {
+        guard field.cli else { return .json(path: field.path, value: value, applies: field.applies) }
+        switch field.id {
+        case "switchThreshold":
+            return .threshold(percent: value?.double ?? 98)
+        case "switchThresholds":
+            // An empty bucket becomes `bucket=default` (drop the override); an empty `default` is simply
+            // not sent, since the CLI refuses `default=default` and keeps the scalar it has.
+            var table: [String: Double?] = [:]
+            for key in Buckets.all { table.updateValue(value?[key].double.map { $0 * 100 }, forKey: key) }
+            if let d = value?["default"].double { table["default"] = d * 100 }
+            return .thresholdTable(table)
+        case "distributeSessions":
+            return .distribute(value?.string ?? "off")
+        case "quotaProbeSeconds":
+            return .probe(seconds: Int(value?.double ?? 0))
+        case "warmupSeconds":
+            return .warmupInterval(seconds: Int(value?.double ?? 0))
+        default:
+            return .json(path: field.path, value: value, applies: field.applies)
+        }
     }
 
     /// Apply a JSON-path plan to a config document.
@@ -214,7 +235,8 @@ public struct ApplyOutcome: Sendable, Equatable {
 /// `login --api` and `remove` do not notify the server themselves.
 public struct SettingsOps: Sendable {
     public typealias Run = @Sendable ([String], String?) async throws -> CLIResult
-    public typealias Update = @Sendable (@Sendable (inout JSON) throws -> Void) throws -> JSON
+    /// Async so the file I/O (read, fsync, rename) can run off the caller's actor.
+    public typealias Update = @Sendable (@escaping @Sendable (inout JSON) throws -> Void) async throws -> JSON
     public typealias Reload = @Sendable () async throws -> ReloadResult
 
     let run: Run
@@ -241,7 +263,7 @@ public struct SettingsOps: Sendable {
         }
         if !usedCLI {
             let path = SettingsPlanner.jsonPath(change)
-            _ = try update { root in try SettingsPlanner.mutate(&root, path) }
+            _ = try await update { root in try SettingsPlanner.mutate(&root, path) }
         }
         let applies = SettingsPlanner.applies(change).resolved(serverVersion: serverVersion)
         var outcome = ApplyOutcome(via: via, restartRequired: applies == .restart, reloaded: false, added: 0, note: nil)

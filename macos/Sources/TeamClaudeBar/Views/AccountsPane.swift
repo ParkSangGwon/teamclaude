@@ -73,14 +73,17 @@ struct AccountCard: View {
                 Button(expanded ? "Less" : "More") { toggle() }.controlSize(.small)
             }
             HStack(spacing: 12) {
-                Toggle("On", isOn: Binding(get: { row["disabled"].bool != true }, set: { on in Task { await store.apply(.enabled(account: name, org: nil, enabled: on), label: on ? "Enable \(name)" : "Disable \(name)") } })).toggleStyle(.switch).controlSize(.small)
+                Toggle("On", isOn: Binding(get: { row["disabled"].bool != true }, set: { on in Task { await store.setEnabled(name, org: row["orgUuid"].string, on) } })).toggleStyle(.switch).controlSize(.small)
                 HStack(spacing: 4) {
                     Text("Priority").font(.system(size: 12)).fixedSize()
-                    TextField("0", text: $priorityText).textFieldStyle(.roundedBorder).frame(width: 50).multilineTextAlignment(.trailing).onSubmit(applyPriority)
-                    Button("Top") { Task { await store.apply(.priority(account: name, org: nil, value: .first), label: "Priority of \(name)") } }.controlSize(.mini).fixedSize()
-                    Button("Bottom") { Task { await store.apply(.priority(account: name, org: nil, value: .last), label: "Priority of \(name)") } }.controlSize(.mini).fixedSize()
+                    TextField("Priority", text: $priorityText).labelsHidden().textFieldStyle(.roundedBorder).frame(width: 50).multilineTextAlignment(.trailing).onSubmit(applyPriority)
+                    Button("Top") { Task { await store.setPriority(name, org: row["orgUuid"].string, .first) } }.controlSize(.mini).fixedSize()
+                    Button("Bottom") { Task { await store.setPriority(name, org: row["orgUuid"].string, .last) } }.controlSize(.mini).fixedSize()
                 }
-                if let live { Text("\(live.sessions) sessions · \(live.usage.totalRequests) requests").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1) }
+                if let live {
+                    Text("\(live.sessions) sessions\(Derived.formatSessionBuckets(live.sessionsByBucket)) · \(live.usage.totalRequests) requests" + (live.pressure.map { $0 > 0 ? " · pressure \(String(format: "%.2f", $0))/s" : "" } ?? ""))
+                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                }
                 Spacer()
                 Button("Remove…") { confirmRemove = true }.controlSize(.small)
             }
@@ -105,14 +108,14 @@ struct AccountCard: View {
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
         .onAppear { priorityText = String(row["priority"].int ?? 0) }
         .onChange(of: row["priority"].int ?? 0) { _, v in priorityText = String(v) }
-        .confirmationDialog("Remove \(name)?", isPresented: $confirmRemove) {
-            Button("Remove", role: .destructive) { Task { await store.apply(.removeAccount(name: name, org: row["orgUuid"].string), label: "Remove \(name)") } }
-        } message: { Text("The entry leaves the config now; the proxy keeps serving it until it restarts.") }
+        .confirmationDialog("Remove \(store.displayName(name))?", isPresented: $confirmRemove) {
+            Button("Remove", role: .destructive) { Task { await store.removeAccount(name, org: row["orgUuid"].string) } }
+        } message: { Text(AppStore.removeAccountMessage) }
     }
 
     private func applyPriority() {
         guard let n = Int(priorityText.trimmingCharacters(in: .whitespaces)) else { return }
-        Task { await store.apply(.priority(account: name, org: nil, value: .number(n)), label: "Priority of \(name)") }
+        Task { await store.setPriority(name, org: row["orgUuid"].string, .number(n)) }
     }
 }
 

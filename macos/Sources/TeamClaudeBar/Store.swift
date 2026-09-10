@@ -31,7 +31,10 @@ final class AppStore {
     private(set) var endpoint: ProxyEndpoint
     private(set) var configFile: ConfigFile
     private(set) var cliLocation: CLILocation?
-    private(set) var serverVersion: String?
+    /// What `teamclaude version` printed for the CLI the app runs.
+    private(set) var cliVersion: String?
+    /// What `teamclaude update` installed while the proxy still runs the previous version.
+    private(set) var installedVersion: String?
     private(set) var rotatedAt: Date?
     private(set) var rotatedTo: String?
     private(set) var restartPending: Set<String> = []
@@ -45,12 +48,15 @@ final class AppStore {
     var popoverOpen = false { didSet { if popoverOpen != oldValue { rescheduleLoop() } } }
     /// Informational banners the user closed this session.
     var dismissedNotices: Set<String> = []
-    private(set) var latestVersion: String?
     private(set) var updateRunning = false
     private(set) var updateNote: String?
-    /// Bumped when an app preference changes so the icon re-renders (Preferences itself is not observable).
-    var prefsVersion = 0
     private(set) var failureStreak = 0
+    /// Display names that stay unique per account (see `Derived.aliases`).
+    private(set) var aliases: [String: String] = [:]
+    private(set) var shortAliases: [String: String] = [:]
+    private(set) var history = HistoryStore()
+    /// The display is asleep or the session is locked: nobody is looking, poll rarely.
+    private(set) var displayAsleep = false
 
     let prefs = Preferences.shared
     private var client: ProxyClient
@@ -58,12 +64,15 @@ final class AppStore {
     private var pollTask: Task<Void, Never>?
     private var pollInFlight = false
     private var pollAgain = false
-    private var updateCheckInFlight = false
     private var appSwitchedTo: (name: String, at: Date)?
     private var restartWatchUntil: Date?
     private var restartRequestedAt: Date?
     private var alertState: AlertState
-    private var wakeObserver: (any NSObjectProtocol)?
+    private var observers: [any NSObjectProtocol] = []
+    private var historySavedAt = Date()
+
+    nonisolated static let historyURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appending(path: "TeamClaudeBar/history.json")
 
     init() {
         let ep = ProxyEndpoint()
@@ -75,20 +84,42 @@ final class AppStore {
         alertState = Preferences.shared.alertState
         reloadEndpoint()
         Task { await self.resolveCLI() }
+        Task.detached { [url = AppStore.historyURL] in
+            let loaded = HistoryStore.load(from: url)
+            await MainActor.run { [weak self] in if let self, self.history.samples.isEmpty { self.history = loaded } }
+        }
     }
+
+    /// The running proxy's version when it reports one (1.1.19+), else the CLI's: what the
+    /// "applies live since" gates compare against.
+    var serverVersion: String? { status?.server?.version ?? cliVersion }
 
     // MARK: - lifecycle
 
     func start() {
         rescheduleLoop(pollNow: true)
-        if wakeObserver == nil {
-            wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in await self?.poll() }
-            }
+        guard observers.isEmpty else { return }
+        let nc = NSWorkspace.shared.notificationCenter
+        observers.append(nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.poll() }
+        })
+        // Display off or session locked: stretch the cadence; back on: poll now.
+        for name in [NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
+            observers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.displayAsleep = true; self?.rescheduleLoop() }
+            })
+        }
+        for name in [NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+            observers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.displayAsleep = false; self?.rescheduleLoop(pollNow: true) }
+            })
         }
     }
 
-    func stop() { pollTask?.cancel() }
+    func stop() {
+        pollTask?.cancel()
+        saveHistory()
+    }
 
     /// Restart the loop so the next sleep uses the current cadence; `pollNow` also polls first.
     private func rescheduleLoop(pollNow: Bool = false) {
@@ -109,7 +140,12 @@ final class AppStore {
     private func nextDelay() -> TimeInterval {
         if let until = restartWatchUntil, Date() < until { return 1 }
         if case .down = connection { return min(30, pow(2, Double(min(failureStreak, 5)))) }
-        return popoverOpen ? prefs.pollOpen : prefs.pollClosed
+        if popoverOpen { return prefs.pollOpen }
+        if displayAsleep { return 300 }
+        // Low Power Mode or a hot machine: half as often, the proxy sweeps quotas on every status call.
+        let info = ProcessInfo.processInfo
+        let eased = info.isLowPowerModeEnabled || info.thermalState == .serious || info.thermalState == .critical
+        return eased ? prefs.pollClosed * 2 : prefs.pollClosed
     }
 
     /// Re-read port/host/key from the config (after a key rotation or a restart that changed the port).
@@ -146,37 +182,18 @@ final class AppStore {
         runner = CLIRunner(location: loc)
         if loc?.configPathOverride != nil { reloadEndpoint() }
         if loc != nil, let r = try? await runner.run(["version"], timeout: 10), r.succeeded {
-            serverVersion = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init)
+            cliVersion = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init)
         }
-        await checkForUpdates(force: false)
     }
 
     // MARK: - updates
 
-    /// What `teamclaude update` installed while the proxy still runs the previous version.
-    private(set) var installedVersion: String?
-
-    var updateAvailable: Bool { UpdateCheck.isNewer(latest: latestVersion, installed: installedVersion ?? serverVersion) }
-
-    /// Ask npm once a day (or on demand) whether a newer teamclaude exists.
-    func checkForUpdates(force: Bool) async {
-        if !force, let last = prefs.lastUpdateCheck, Date().timeIntervalSince(last) < 86_400, let cached = prefs.cachedLatestVersion {
-            latestVersion = cached
-            return
-        }
-        if let v = try? await UpdateCheck.fetchLatest() {
-            latestVersion = v
-            prefs.cachedLatestVersion = v
-            prefs.lastUpdateCheck = Date()
-        }
-    }
-
-    /// `teamclaude update` (npm install -g) through the CLI, then flag the restart.
+    /// `teamclaude update` (npm install -g) through the CLI; its output says whether there was anything to install.
     func runUpdate() async {
         guard !updateRunning else { return }
         updateRunning = true
         updateNote = nil
-        showToast(.info, "Updating teamclaude…")
+        showToast(.info, "Checking npm for a newer teamclaude…")
         do {
             let r = try await runner.run(["update"], timeout: 600)
             let installed = UpdateCheck.installedVersion(fromUpdateOutput: r.stdout)
@@ -189,7 +206,6 @@ final class AppStore {
             } else if r.succeeded {
                 updateNote = r.stdout.split(separator: "\n").last.map(String.init) ?? "Already up to date"
                 showToast(.info, updateNote!)
-                await checkForUpdates(force: true)
             } else {
                 updateNote = r.failureMessage
                 showToast(.error, "Update failed: \(r.failureMessage)")
@@ -232,11 +248,7 @@ final class AppStore {
         let qr = await quotaTask.value
         applyQuota(qr)
         evaluateAlerts()
-        // The app runs for weeks: the once-a-day registry check has to happen from here, not only at launch.
-        if !updateCheckInFlight, prefs.lastUpdateCheck.map({ Date().timeIntervalSince($0) > 86_400 }) ?? true {
-            updateCheckInFlight = true
-            Task { await checkForUpdates(force: false); updateCheckInFlight = false }
-        }
+        recordHistory()
     }
 
     /// True only while the restart the user asked for is still expected to land.
@@ -259,21 +271,26 @@ final class AppStore {
             let wasDown = { if case .down = connection { return true } else { return false } }()
             connection = .up
             if wasDown { showToast(.ok, "Proxy is back") }
+            refreshAliases(s)
             // A `startedAt` later than the restart request is the restart, whether or not the proxy answered before it.
             // A server that reports no `startedAt` cannot be watched, so any answer after the request counts.
             if let requested = restartRequestedAt, s.server?.startedAt.map({ $0 > requested }) ?? true {
                 restartRequestedAt = nil
                 restartWatchUntil = nil
                 restartPending.removeAll()
-                if let installedVersion { serverVersion = installedVersion; self.installedVersion = nil }
+                if let installedVersion { cliVersion = installedVersion; self.installedVersion = nil }
                 showToast(.ok, "Proxy restarted")
             }
             let prevTarget = previousStatus?.effectiveDefaultTarget
             // The same ten-second window the alert engine uses for "the app did this itself".
             let justSwitchedTo = appSwitchedTo.flatMap { Date().timeIntervalSince($0.at) < 10 ? $0.name : nil }
-            if let prev = prevTarget, let cur = s.effectiveDefaultTarget, prev != cur, justSwitchedTo != cur {
-                rotatedAt = Date()
-                rotatedTo = cur
+            if let prev = prevTarget, let cur = s.effectiveDefaultTarget, prev != cur {
+                if justSwitchedTo != cur {
+                    rotatedAt = Date()
+                    rotatedTo = cur
+                }
+                let reason = Derived.rotationReason(from: prev, to: cur, previous: previousStatus, status: s)
+                prefs.rotationLog.append(RotationEvent(at: Date(), from: prev, to: cur, reason: justSwitchedTo == cur ? "switched from the app" : reason, manual: justSwitchedTo == cur))
             }
         case .failure(let e):
             failureStreak += 1
@@ -336,6 +353,20 @@ final class AppStore {
         return a
     }
 
+    private func recordHistory() {
+        guard let status else { return }
+        let now = Date()
+        if history.record(HistorySample(status: status, quota: freshQuota, at: now)), now.timeIntervalSince(historySavedAt) > 300 {
+            saveHistory()
+        }
+    }
+
+    private func saveHistory() {
+        historySavedAt = Date()
+        let snapshot = history
+        Task.detached { try? snapshot.save(to: AppStore.historyURL) }
+    }
+
     var isDown: Bool { if case .down = connection { return true } else { return false } }
 
     var restartPendingText: String? {
@@ -346,7 +377,7 @@ final class AppStore {
     var iconModel: IconModel {
         MenuBarState.compute(IconInputs(status: status, quota: freshQuota, reachable: !isDown, lastSuccessAt: lastSuccessAt,
                                         pollInterval: popoverOpen ? prefs.pollOpen : prefs.pollClosed, rotatedAt: rotatedAt, rotatedTo: rotatedTo,
-                                        pinCurrent: prefs.pinCurrent, showRemaining: prefs.showRemaining, warnLevel: prefs.warnLevel))
+                                        pinCurrent: prefs.pinCurrent, showRemaining: prefs.showRemaining))
     }
 
     // MARK: - actions
@@ -368,6 +399,21 @@ final class AppStore {
                 showToast(.error, "Switch failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// The hotkey: move traffic to the next account in priority order that can serve, wrapping around.
+    func switchToNextAvailable() {
+        guard let status, !status.accounts.isEmpty else { showToast(.warn, "No accounts to switch between"); return }
+        let ordered = status.accountsByPriority
+        let start = ordered.firstIndex { $0.name == status.currentAccount } ?? -1
+        for offset in 1...ordered.count {
+            let candidate = ordered[(start + offset) % ordered.count]
+            if candidate.unavailable == nil, candidate.name != status.currentAccount {
+                switchTo(candidate.name)
+                return
+            }
+        }
+        showToast(.warn, "No other account can serve right now")
     }
 
     /// `POST /teamclaude/reload`; the result is what callers report, not a guess.
@@ -392,7 +438,8 @@ final class AppStore {
         let client = self.client
         return SettingsOps(
             run: { args, stdin in try await runner.run(args, stdin: stdin) },
-            update: { mutate in try file.update(mutate) },
+            // The read, fsync and rename happen off the main actor.
+            update: { mutate in try await Task.detached { try file.update(mutate) }.value },
             reload: { try await client.reload() },
             serverVersion: serverVersion
         )
@@ -428,6 +475,21 @@ final class AppStore {
         return nil
     }
 
+    // Account actions the card and the table share, with one wording each.
+    func setPriority(_ name: String, org: String? = nil, _ value: PriorityValue) async {
+        await apply(.priority(account: name, org: org, value: value), label: "Priority of \(displayName(name))")
+    }
+
+    func setEnabled(_ name: String, org: String? = nil, _ enabled: Bool) async {
+        await apply(.enabled(account: name, org: org, enabled: enabled), label: enabled ? "Enable \(displayName(name))" : "Disable \(displayName(name))")
+    }
+
+    func removeAccount(_ name: String, org: String? = nil) async {
+        await apply(.removeAccount(name: name, org: org), label: "Remove \(displayName(name))")
+    }
+
+    static let removeAccountMessage = "The entry leaves the config now; the proxy keeps serving it until it restarts."
+
     func runCLI(_ args: [String], stdin: String? = nil, stdinWriter: StdinWriter? = nil, timeout: TimeInterval = 30,
                 onLine: (@Sendable (OutputLine) -> Void)? = nil) async throws -> CLIResult {
         try await runner.run(args, stdin: stdin, stdinWriter: stdinWriter, timeout: timeout, onLine: onLine)
@@ -457,19 +519,36 @@ final class AppStore {
 
     // MARK: - config document & service health (settings screens)
 
+    /// Re-read the config for the settings screens, off the main actor; the screens update when it lands.
     func loadConfigRoot() {
-        do {
-            configRoot = try configFile.load().root
-            configError = nil
-        } catch let e as ConfigError {
-            configError = "\(e)"
-        } catch {
-            configError = error.localizedDescription
+        let file = configFile
+        Task {
+            let result: Result<JSON, Error> = await Task.detached { Result { try file.load().root } }.value
+            switch result {
+            case .success(let root): configRoot = root; configError = nil
+            case .failure(let e as ConfigError): configError = "\(e)"
+            case .failure(let e): configError = e.localizedDescription
+            }
         }
     }
 
     func configValue(_ path: [String]) -> JSON {
         configRoot.map { ConfigFile.value($0, path: path) } ?? .null
+    }
+
+    /// Write a whole document (the raw editor): the same atomic path as every other edit, then reload.
+    func writeConfigDocument(_ root: JSON) async -> Bool {
+        let file = configFile
+        do {
+            try await Task.detached { try file.withLock { try file.write(root) } }.value
+            reloadEndpoint()
+            loadConfigRoot()
+            let ok = await reloadConfig()
+            return ok
+        } catch {
+            showToast(.error, "Could not write the config: \(error.localizedDescription)")
+            return false
+        }
     }
 
     func refreshServiceHealth() async {
@@ -540,6 +619,35 @@ final class AppStore {
         }
     }
 
+    /// status.json, quota.json, the config with every secret replaced, `launchctl print`, and the app's
+    /// own state, in a folder under Downloads: what a bug report needs and nothing it must not carry.
+    func exportDiagnostics() async -> URL? {
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].appending(path: "teamclaude-diagnostics-\(stamp)")
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            if let status { try status.raw.pretty().write(to: dir.appending(path: "status.json"), atomically: true, encoding: .utf8) }
+            if let quota { try quota.raw.pretty().write(to: dir.appending(path: "quota.json"), atomically: true, encoding: .utf8) }
+            if let root = try? configFile.load().root {
+                try ConfigRedaction.redact(root).pretty().write(to: dir.appending(path: "config-redacted.json"), atomically: true, encoding: .utf8)
+            }
+            let uid = getuid()
+            let print = try? await CLIRunner.execute(executable: URL(fileURLWithPath: "/bin/launchctl"), arguments: ["print", "gui/\(uid)/\(ProxyLocator.launchAgentLabel)"],
+                                                     environment: ProcessInfo.processInfo.environment, timeout: 10)
+            try (print?.stdout ?? "(launchctl print failed)").write(to: dir.appending(path: "launchctl.txt"), atomically: true, encoding: .utf8)
+            var app = ["TeamClaude Bar \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "(dev)")"]
+            app.append("endpoint \(endpoint.label) · connection \(connection) · cli \(cliLocation?.describe ?? "not found") · cli version \(cliVersion ?? "?") · server version \(status?.server?.version ?? "not reported")")
+            app.append("service \(serviceDiagnosis?.text ?? "not checked")")
+            app.append("macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
+            try app.joined(separator: "\n").write(to: dir.appending(path: "app.txt"), atomically: true, encoding: .utf8)
+            showToast(.ok, "Diagnostics written to Downloads")
+            return dir
+        } catch {
+            showToast(.error, "Could not export diagnostics: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     func clearRestartPending() { restartPending.removeAll() }
 
     func showToast(_ kind: Toast.Kind, _ text: String) {
@@ -551,15 +659,71 @@ final class AppStore {
         }
     }
 
-    func displayName(_ name: String) -> String {
-        guard prefs.hidePII else { return name }
-        return MenuBarState.shortName(name) + "…"
+    // MARK: - names
+
+    private func refreshAliases(_ s: StatusSnapshot) {
+        let rows = s.accounts.map { (name: $0.name, org: $0.orgName) }
+        aliases = Derived.aliases(for: rows)
+        shortAliases = Derived.aliases(for: rows, base: MenuBarState.shortName)
     }
 
-    /// The local part of an email for tight spots (`alice` for `alice@example.com`).
+    /// The name as the user wants it shown: the full name, or a unique short alias with Hide PII on.
+    func displayName(_ name: String) -> String {
+        guard prefs.hidePII else { return name }
+        return (shortAliases[name] ?? MenuBarState.shortName(name)) + "…"
+    }
+
+    /// The local part of an email for tight spots (`alice` for `alice@example.com`), kept unique across accounts.
     func compactName(_ name: String) -> String {
-        if prefs.hidePII { return MenuBarState.shortName(name) + "…" }
-        if let at = name.firstIndex(of: "@") { return String(name[..<at]) }
-        return name
+        if prefs.hidePII { return displayName(name) }
+        return aliases[name] ?? String(name.split(separator: "@").first ?? Substring(name))
+    }
+}
+
+/// Everything the raw editor and the diagnostics export must never show.
+enum ConfigRedaction {
+    static let placeholder = "•••"
+
+    static func redact(_ json: JSON) -> JSON {
+        switch json {
+        case .object(let o):
+            var out: [String: JSON] = [:]
+            for (k, v) in o {
+                if SettingsSchema.sensitiveKeys.contains(k), v.string != nil { out[k] = .string(placeholder) }
+                else { out[k] = redact(v) }
+            }
+            return .object(out)
+        case .array(let a):
+            return .array(a.map(redact))
+        default:
+            return json
+        }
+    }
+
+    /// Put the on-disk secrets back where the edited document still carries the placeholder,
+    /// matching account rows by `id`, then by `name`, then by position.
+    static func restore(_ edited: JSON, from disk: JSON) -> JSON {
+        func merge(_ e: JSON, _ d: JSON) -> JSON {
+            switch (e, d) {
+            case (.object(let eo), .object(let dobj)):
+                var out: [String: JSON] = [:]
+                for (k, v) in eo {
+                    if v.string == placeholder, let orig = dobj[k], orig.string != nil { out[k] = orig }
+                    else if let dv = dobj[k] { out[k] = merge(v, dv) }
+                    else { out[k] = v }
+                }
+                return .object(out)
+            case (.array(let ea), .array(let da)):
+                return .array(ea.enumerated().map { i, item in
+                    let match = da.first { $0["id"].string != nil && $0["id"].string == item["id"].string }
+                        ?? da.first { $0["name"].string != nil && $0["name"].string == item["name"].string }
+                        ?? (i < da.count ? da[i] : nil)
+                    return match.map { merge(item, $0) } ?? item
+                })
+            default:
+                return e
+            }
+        }
+        return merge(edited, disk)
     }
 }
