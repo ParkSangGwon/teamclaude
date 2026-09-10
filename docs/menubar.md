@@ -58,6 +58,15 @@ Global shortcuts (no Accessibility permission): `⌃⌥⌘N` moves traffic to th
 account that can serve, `⌃⌥⌘T` opens the popover. Both can be turned off in
 Settings → General.
 
+The menu bar title reads `5h 42%` (the fleet's 5-hour usage, or the pinned
+account's with its three-letter tag in front), so it is not mistaken for a battery.
+
+The interface follows the Mac's language setting when it is one of English,
+Korean, Japanese, Simplified Chinese, Spanish, German or French, and can be
+switched in Settings → General → Language without a relaunch. Translations live in
+`macos/Sources/TeamClaudeCore/Resources/<lang>.lproj/Localizable.strings`, keyed by
+the English text; a missing key shows the English.
+
 Notifications cover fleet thresholds, a rotation (with its reason), an account
 leaving or re-entering rotation, a re-login needed, the quota probe failing, a
 hold, the proxy going away, and overage billing. Polling slows to every five

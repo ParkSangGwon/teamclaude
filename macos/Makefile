@@ -37,6 +37,7 @@ app: build
 	rm -rf "$(APP)"
 	mkdir -p "$(APP)/Contents/MacOS" "$(APP)/Contents/Resources"
 	cp "$(BIN)/$(PRODUCT)" "$(APP)/Contents/MacOS/$(PRODUCT)"
+	cp -R "$(BIN)/$(PRODUCT)_TeamClaudeCore.bundle" "$(APP)/Contents/Resources/"
 	sed 's/__VERSION__/$(VERSION)/g' Resources/Info.plist > "$(APP)/Contents/Info.plist"
 	printf 'APPL????' > "$(APP)/Contents/PkgInfo"
 	@if [ -d Resources/AppIcon.iconset ]; then iconutil -c icns Resources/AppIcon.iconset -o "$(APP)/Contents/Resources/AppIcon.icns"; fi

@@ -11,22 +11,22 @@ struct HistoryPane: View {
         let since = now.addingTimeInterval(-window)
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Picker("Window", selection: $window) {
-                    Text("6 h").tag(6 * 3600.0)
-                    Text("24 h").tag(24 * 3600.0)
-                    Text("7 d").tag(7 * 24 * 3600.0)
+                Picker(L("Window"), selection: $window) {
+                    Text(L("6 h")).tag(6 * 3600.0)
+                    Text(L("24 h")).tag(24 * 3600.0)
+                    Text(L("7 d")).tag(7 * 24 * 3600.0)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 200)
                 Spacer()
-                Text("\(store.history.samples.count) samples · one a minute while the app runs").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(L("%d samples · one a minute while the app runs", store.history.samples.count)).font(.system(size: 11)).foregroundStyle(.secondary)
             }
-            TitledGroup(title: "Fleet") {
-                sparkline(title: "Session (5-hour)", points: store.history.series(since: since, until: now) { $0.fleetFiveHour }, since: since, until: now)
-                sparkline(title: "Weekly", points: store.history.series(since: since, until: now) { $0.fleetWeekly }, since: since, until: now)
+            TitledGroup(title: L("Fleet")) {
+                sparkline(title: L("Session (5-hour)"), points: store.history.series(since: since, until: now) { $0.fleetFiveHour }, since: since, until: now)
+                sparkline(title: L("Weekly"), points: store.history.series(since: since, until: now) { $0.fleetWeekly }, since: since, until: now)
             }
-            TitledGroup(title: "Accounts") {
+            TitledGroup(title: L("Accounts")) {
                 let names = store.history.accountNames
                 if names.isEmpty {
-                    Text("Nothing recorded yet — samples start with the first successful poll.").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(L("Nothing recorded yet — samples start with the first successful poll.")).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 ForEach(names, id: \.self) { name in
                     VStack(alignment: .leading, spacing: 3) {
@@ -41,10 +41,10 @@ struct HistoryPane: View {
                     }
                 }
                 HStack(spacing: 10) {
-                    legend("active", .green); legend("throttled", .yellow); legend("over threshold", .orange); legend("error / exhausted", .red); legend("disabled", nil); legend("app not running", nil, hatched: true)
+                    legend(L("active"), .green); legend(L("throttled"), .yellow); legend(L("over threshold"), .orange); legend(L("error / exhausted"), .red); legend(L("disabled"), nil); legend(L("app not running"), nil, hatched: true)
                 }.font(.system(size: 10)).foregroundStyle(.secondary)
             }
-            Text("Kept locally in ~/Library/Application Support/TeamClaudeBar/history.json for seven days; the proxy itself only knows the present.").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(L("Kept locally in ~/Library/Application Support/TeamClaudeBar/history.json for seven days; the proxy itself only knows the present.")).font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }
 
@@ -53,7 +53,7 @@ struct HistoryPane: View {
         let total = segs.reduce(0.0) { $0 + $1.to.timeIntervalSince($1.from) }
         guard total > 0 else { return "" }
         let out = segs.filter { $0.state != "active" && $0.state != "absent" }.reduce(0.0) { $0 + $1.to.timeIntervalSince($1.from) }
-        return out > 0 ? "out of rotation \(Derived.formatDuration(out)) of \(Derived.formatDuration(total))" : "in rotation the whole time"
+        return out > 0 ? L("out of rotation %@ of %@", Derived.formatDuration(out), Derived.formatDuration(total)) : L("in rotation the whole time")
     }
 
     @ViewBuilder
@@ -90,7 +90,7 @@ struct HistoryStrip: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 3))
-        .accessibilityLabel(segments.map { "\($0.state) \(Derived.formatDuration($0.to.timeIntervalSince($0.from)))" }.joined(separator: ", "))
+        .accessibilityLabel(segments.map { "\(L($0.state)) \(Derived.formatDuration($0.to.timeIntervalSince($0.from)))" }.joined(separator: ", "))
     }
 
     static func color(for state: String) -> Color {
@@ -143,6 +143,6 @@ struct Sparkline: View {
             let end = pt(points[points.count - 1])
             ctx.fill(Path(ellipseIn: CGRect(x: end.x - 2.5, y: end.y - 2.5, width: 5, height: 5)), with: .color(color))
         }
-        .accessibilityLabel(points.last.map { "latest \(Derived.formatPercent($0.1))" } ?? "no data")
+        .accessibilityLabel(points.last.map { L("latest %@", Derived.formatPercent($0.1)) } ?? L("no data"))
     }
 }

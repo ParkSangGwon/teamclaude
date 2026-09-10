@@ -156,13 +156,13 @@ public enum ServiceDiagnosis: Sendable, Equatable {
 
     public var text: String {
         switch self {
-        case .healthy(let pid): return "Service running (pid \(pid))"
-        case .notInstalled: return "Service not installed — the proxy is not managed by launchd"
-        case .notLoaded: return "Service installed but not loaded"
+        case .healthy(let pid): return L("Service running (pid %d)", pid)
+        case .notInstalled: return L("Service not installed — the proxy is not managed by launchd")
+        case .notLoaded: return L("Service installed but not loaded")
         case .portHeldElsewhere(let pid, let cmd, let runs):
-            return "Port is served by another process (\(cmd.isEmpty ? "pid \(pid)" : "\(cmd), pid \(pid)")); the LaunchAgent cannot start" + (runs.map { " (\($0) attempts)" } ?? "")
-        case .crashLooping(let runs, let code): return "Service is crash-looping" + (runs.map { " (\($0) runs" } ?? "") + (code.map { ", last exit \($0))" } ?? ")")
-        case .stopped: return "Service loaded but not running"
+            return L("Port is served by another process (%@); the LaunchAgent cannot start", cmd.isEmpty ? "pid \(pid)" : "\(cmd), pid \(pid)") + (runs.map { " " + L("(%d attempts)", $0) } ?? "")
+        case .crashLooping(let runs, let code): return L("Service is crash-looping") + (runs.map { " " + L("(%d runs", $0) } ?? "") + (code.map { ", " + L("last exit %d)", $0) } ?? ")")
+        case .stopped: return L("Service loaded but not running")
         }
     }
 }

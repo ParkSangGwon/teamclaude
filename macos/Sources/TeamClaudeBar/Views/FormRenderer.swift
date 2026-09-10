@@ -16,7 +16,7 @@ struct FieldRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(field.label).font(.system(size: 13, weight: .semibold))
+                Text(L(field.label)).font(.system(size: 13, weight: .semibold))
                 Spacer()
                 AppliesTag(applies: applies)
             }
@@ -24,20 +24,20 @@ struct FieldRow: View {
             if snapshotMode {
                 Text(snapshotText).font(.system(size: 12, design: .monospaced)).foregroundStyle(.primary)
             } else {
-                control.accessibilityLabel(field.label)
+                control.accessibilityLabel(L(field.label))
             }
-            Text(field.help).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(L(field.help)).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 8)
     }
 
     private var snapshotText: String {
         switch field.kind {
-        case .toggle: return value.bool == true ? "on" : "off"
-        case .secret: return value.string.map { _ in "•••••" } ?? "(not set)"
-        case .stringList: return value.stringArray.isEmpty ? "(none)" : value.stringArray.joined(separator: ", ")
-        case .keyedNumbers, .objectList: return value.isNull ? "(default)" : value.pretty()
-        default: return value.string ?? value.double.map { $0 == $0.rounded() ? String(Derived.safeInt($0)) : String($0) } ?? "(default)"
+        case .toggle: return value.bool == true ? L("on") : L("off")
+        case .secret: return value.string.map { _ in "•••••" } ?? L("(not set)")
+        case .stringList: return value.stringArray.isEmpty ? L("(none)") : value.stringArray.joined(separator: ", ")
+        case .keyedNumbers, .objectList: return value.isNull ? L("(default)") : value.pretty()
+        default: return value.string ?? value.double.map { $0 == $0.rounded() ? String(Derived.safeInt($0)) : String($0) } ?? L("(default)")
         }
     }
 
@@ -45,7 +45,7 @@ struct FieldRow: View {
     private var control: some View {
         switch field.kind {
         case .toggle:
-            Toggle(field.label, isOn: Binding(get: { value.bool ?? false }, set: { onCommit(.bool($0)) })).labelsHidden().toggleStyle(.switch).controlSize(.small)
+            Toggle(L(field.label), isOn: Binding(get: { value.bool ?? false }, set: { onCommit(.bool($0)) })).labelsHidden().toggleStyle(.switch).controlSize(.small)
         case .int(let min, let max, let step, let unit):
             NumberEditor(value: value.double, integer: true, min: min.map(Double.init), max: max.map(Double.init), step: Double(step), unit: unit, onCommit: { onCommit($0.map(JSON.number)) })
         case .double(let min, let max, let step, let unit):
@@ -55,7 +55,7 @@ struct FieldRow: View {
         case .secret:
             SecretEditor(value: value.string, canRegenerate: field.id == "proxy.apiKey", onCommit: { onCommit($0.map(JSON.string)) })
         case .picker(let options):
-            Picker(field.label, selection: Binding(get: { value.string ?? options.first ?? "" }, set: { if $0 != value.string { onCommit(.string($0)) } })) {
+            Picker(L(field.label), selection: Binding(get: { value.string ?? options.first ?? "" }, set: { if $0 != value.string { onCommit(.string($0)) } })) {
                 ForEach(options, id: \.self) { Text($0).tag($0) }
             }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 360)
         case .stringList:
@@ -76,8 +76,8 @@ struct AppliesTag: View {
     var body: some View {
         // The adaptive severity colours: system green/yellow are near-invisible on the light window background.
         switch applies {
-        case .live: Label("applies live", systemImage: "bolt.fill").font(.system(size: 10, weight: .semibold)).foregroundStyle(Level.green.color)
-        default: Label("restart", systemImage: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).foregroundStyle(Level.orange.color)
+        case .live: Label(L("applies live"), systemImage: "bolt.fill").font(.system(size: 10, weight: .semibold)).foregroundStyle(Level.green.color)
+        default: Label(L("restart"), systemImage: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).foregroundStyle(Level.orange.color)
         }
     }
 }
@@ -127,9 +127,9 @@ struct NumberEditor: View {
     private func commit() {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { error = nil; onCommit(nil); return }
-        guard let v = Double(trimmed) else { error = "not a number"; return }
-        if let min, v < min { error = "min \(format(min))"; return }
-        if let max, v > max { error = "max \(format(max))"; return }
+        guard let v = Double(trimmed) else { error = L("not a number"); return }
+        if let min, v < min { error = L("min %@", format(min)); return }
+        if let max, v > max { error = L("max %@", format(max)); return }
         error = nil
         let clamped = integer ? v.rounded() : v
         if clamped != value { onCommit(clamped) }
@@ -145,7 +145,7 @@ struct TextEditorRow: View {
         HStack {
             TextField(placeholder, text: $text).textFieldStyle(.roundedBorder).frame(maxWidth: 420)
                 .onSubmit { if text != value { onCommit(text.trimmingCharacters(in: .whitespaces)) } }
-            if text != value { Button("Apply") { onCommit(text.trimmingCharacters(in: .whitespaces)) }.controlSize(.small) }
+            if text != value { Button(L("Apply")) { onCommit(text.trimmingCharacters(in: .whitespaces)) }.controlSize(.small) }
         }
         .onAppear { text = value }
         .onChange(of: value) { _, new in text = new }
@@ -161,7 +161,7 @@ struct SecretEditor: View {
     @State private var confirmRegenerate = false
 
     var masked: String {
-        guard let value, !value.isEmpty else { return "(not set)" }
+        guard let value, !value.isEmpty else { return L("(not set)") }
         if value.count <= 8 { return String(repeating: "•", count: value.count) }
         return value.prefix(5) + "…" + value.suffix(3)
     }
@@ -170,23 +170,23 @@ struct SecretEditor: View {
         HStack(spacing: 8) {
             Text(masked).font(.system(size: 12, design: .monospaced)).foregroundStyle(value == nil ? .secondary : .primary)
             if let value, !value.isEmpty {
-                Button("Copy") { Actions.copySecret(value) }.controlSize(.small)
+                Button(L("Copy")) { Actions.copySecret(value) }.controlSize(.small)
             }
-            Button(value == nil ? "Set…" : "Change…") { draft = ""; editing = true }.controlSize(.small)
-            if canRegenerate { Button("Regenerate…") { confirmRegenerate = true }.controlSize(.small) }
-            if value != nil, !canRegenerate { Button("Clear") { onCommit(nil) }.controlSize(.small) }
+            Button(value == nil ? L("Set…") : L("Change…")) { draft = ""; editing = true }.controlSize(.small)
+            if canRegenerate { Button(L("Regenerate…")) { confirmRegenerate = true }.controlSize(.small) }
+            if value != nil, !canRegenerate { Button(L("Clear")) { onCommit(nil) }.controlSize(.small) }
             Spacer()
         }
         .sheet(isPresented: $editing) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Enter the new value").font(.headline)
-                SecureField("secret", text: $draft).textFieldStyle(.roundedBorder).frame(width: 360)
-                HStack { Spacer(); Button("Cancel") { editing = false }; Button("Save") { onCommit(draft); editing = false }.keyboardShortcut(.defaultAction).disabled(draft.isEmpty) }
+                Text(L("Enter the new value")).font(.headline)
+                SecureField(L("secret"), text: $draft).textFieldStyle(.roundedBorder).frame(width: 360)
+                HStack { Spacer(); Button(L("Cancel")) { editing = false }; Button(L("Save")) { onCommit(draft); editing = false }.keyboardShortcut(.defaultAction).disabled(draft.isEmpty) }
             }.padding(20)
         }
-        .confirmationDialog("Regenerate the proxy key?", isPresented: $confirmRegenerate) {
-            Button("Regenerate", role: .destructive) { onCommit(ConfigFile.newProxyKey()) }
-        } message: { Text("Remote clients and the dashboard need the new key. The app switches to it automatically.") }
+        .confirmationDialog(L("Regenerate the proxy key?"), isPresented: $confirmRegenerate) {
+            Button(L("Regenerate"), role: .destructive) { onCommit(ConfigFile.newProxyKey()) }
+        } message: { Text(L("Remote clients and the dashboard need the new key. The app switches to it automatically.")) }
     }
 }
 
@@ -201,19 +201,19 @@ struct KeyedNumbersEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let scalar = value.double {
-                Text("Currently a single value: \(Derived.formatPercent(scalar))").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(L("Currently a single value: %@", Derived.formatPercent(scalar))).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             ForEach(keys, id: \.self) { key in
                 HStack {
                     Text(key).font(.system(size: 12, design: .monospaced)).frame(width: 150, alignment: .leading)
-                    TextField(key, text: Binding(get: { texts[key] ?? "" }, set: { texts[key] = $0 }), prompt: Text("default"))
+                    TextField(key, text: Binding(get: { texts[key] ?? "" }, set: { texts[key] = $0 }), prompt: Text(L("default")))
                         .labelsHidden().textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing)
                         .onSubmit(commit)
                     Text("%").foregroundStyle(.secondary)
                 }
             }
             HStack {
-                Button("Apply") { commit() }.controlSize(.small)
+                Button(L("Apply")) { commit() }.controlSize(.small)
                 if let error { Text(error).font(.system(size: 11)).foregroundStyle(.red) }
             }
         }
@@ -238,7 +238,7 @@ struct KeyedNumbersEditor: View {
         for key in keys {
             let raw = (texts[key] ?? "").trimmingCharacters(in: .whitespaces)
             if raw.isEmpty { continue }
-            guard let pct = Double(raw), pct >= 0, pct <= 100 else { error = "\(key): a number from 0 to 100"; return }
+            guard let pct = Double(raw), pct >= 0, pct <= 100 else { error = "\(key): " + L("a number from 0 to 100"); return }
             obj[key] = .number(pct / 100)
         }
         error = nil
@@ -274,9 +274,9 @@ struct ObjectListEditor: View {
                 }
             }
             HStack {
-                Button("Add") { rows.append([:]) }.controlSize(.small)
-                if fields.contains("key") { Button("Add with generated key") { rows.append(["key": ConfigFile.newProxyKey()]) }.controlSize(.small) }
-                Button("Apply") { commit() }.controlSize(.small)
+                Button(L("Add")) { rows.append([:]) }.controlSize(.small)
+                if fields.contains("key") { Button(L("Add with generated key")) { rows.append(["key": ConfigFile.newProxyKey()]) }.controlSize(.small) }
+                Button(L("Apply")) { commit() }.controlSize(.small)
             }
         }
         .onAppear(perform: load)
@@ -330,13 +330,13 @@ struct SchemaPane: View {
             let members = fields.filter { $0.id.hasPrefix(g.prefix) && $0.id != g.prefix + "enabled" }
             let on = g.gate(store)
             DisclosureGroup {
-                if !on { Text(g.note).font(.system(size: 11)).foregroundStyle(.secondary).padding(.vertical, 4) }
+                if !on { Text(L(g.note)).font(.system(size: 11)).foregroundStyle(.secondary).padding(.vertical, 4) }
                 ForEach(members) { field in
                     row(field).disabled(!on).opacity(on ? 1 : 0.6)
                     Divider()
                 }
             } label: {
-                HStack { Text(g.title).font(.system(size: 13, weight: .semibold)); Text("\(members.count) settings").font(.system(size: 11)).foregroundStyle(.secondary); Spacer(); AppliesTag(applies: .restart) }
+                HStack { Text(L(g.title)).font(.system(size: 13, weight: .semibold)); Text(L("%d settings", members.count)).font(.system(size: 11)).foregroundStyle(.secondary); Spacer(); AppliesTag(applies: .restart) }
             }
             .padding(.vertical, 8)
             Divider()
@@ -346,10 +346,10 @@ struct SchemaPane: View {
     private func row(_ field: SettingField) -> some View {
         FieldRow(field: field, value: displayValue(field)) { new in
             if let why = SchemaPane.validate(field, value: new) {
-                store.showToast(.error, "\(field.label): \(why)")
+                store.showToast(.error, "\(L(field.label)): \(why)")
                 return
             }
-            Task { await store.apply(SettingsPlanner.change(for: field, value: new), label: field.label) }
+            Task { await store.apply(SettingsPlanner.change(for: field, value: new), label: L(field.label)) }
         }
     }
 
@@ -360,14 +360,14 @@ struct SchemaPane: View {
             return value?.string.flatMap(SettingsValidation.upstreamProxy)
         case "proxy.host":
             guard let h = value?.string, !h.isEmpty else { return nil }
-            return ProxyEndpoint.isValid(host: h, port: 3456) ? nil : "Not a host name or address the app can dial"
+            return ProxyEndpoint.isValid(host: h, port: 3456) ? nil : L("Not a host name or address the app can dial")
         case "proxy.port":
             guard let p = value?.int else { return nil }
-            return (1...65535).contains(p) ? nil : "Port must be 1–65535"
+            return (1...65535).contains(p) ? nil : L("Port must be 1–65535")
         case "proxy.usageDimensions":
             let headers = (value?.array ?? []).compactMap { $0["header"].string?.lowercased() }
             if let reserved = headers.first(where: { SettingsValidation.reservedDimensionHeaders.contains($0) }) {
-                return "\(reserved) is a reserved header and cannot be a usage dimension"
+                return L("%@ is a reserved header and cannot be a usage dimension", reserved)
             }
             return nil
         default:

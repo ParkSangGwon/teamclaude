@@ -45,14 +45,14 @@ public enum ProxyError: Error, Sendable, Equatable {
 
     public var message: String {
         switch self {
-        case .unreachable: return "Proxy is not running"
-        case .timedOut: return "Proxy did not answer — the event loop may be stalled; check the log"
-        case .unauthorized: return "Proxy rejected the API key"
-        case .notTeamClaude(let code): return "Something else is answering on the proxy port (HTTP \(code))"
-        case .unsupported: return "This proxy version does not support that action"
+        case .unreachable: return L("Proxy is not running")
+        case .timedOut: return L("Proxy did not answer — the event loop may be stalled; check the log")
+        case .unauthorized: return L("Proxy rejected the API key")
+        case .notTeamClaude(let code): return L("Something else is answering on the proxy port (HTTP %d)", code)
+        case .unsupported: return L("This proxy version does not support that action")
         case .rejected(let why): return why
-        case .badReply(let why): return "Unexpected reply: \(why)"
-        case .tooLarge: return "Reply too large"
+        case .badReply(let why): return L("Unexpected reply: %@", why)
+        case .tooLarge: return L("Reply too large")
         }
     }
 }

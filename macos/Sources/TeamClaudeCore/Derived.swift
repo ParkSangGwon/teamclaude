@@ -37,7 +37,7 @@ public enum UnavailableText {
 
     public static func label(_ code: String?) -> String? {
         guard let code else { return nil }
-        return table[code] ?? code
+        return table[code].map { L($0) } ?? code
     }
 }
 
@@ -104,26 +104,26 @@ public enum Derived {
     public static func formatResetLong(_ resetAt: Date?, style: ResetStyle = .both, now: Date = Date(), calendar: Calendar = .current) -> String {
         guard let resetAt else { return "" }
         let remaining = resetAt.timeIntervalSince(now)
-        if remaining <= 0 { return "Reset due" }
+        if remaining <= 0 { return L("Reset due") }
         let spaced = spacedCountdown(remaining)
         let clock = clockText(resetAt, now: now, calendar: calendar)
         switch style {
-        case .countdown: return "Resets in \(spaced)"
-        case .clock: return "Resets \(clock)"
-        case .both: return "Resets in \(spaced) (\(clock))"
+        case .countdown: return L("Resets in %@", spaced)
+        case .clock: return L("Resets %@", clock)
+        case .both: return L("Resets in %@ (%@)", spaced, clock)
         }
     }
 
     static func spacedCountdown(_ remaining: TimeInterval) -> String {
-        if remaining < 60 { return "under a minute" }
+        if remaining < 60 { return L("under a minute") }
         guard remaining.isFinite, remaining < 1e15 else { return "" }
         return tiered(minutes: Int((remaining / 60).rounded(.up)), separator: " ")
     }
 
     static func clockText(_ date: Date, now: Date, calendar: Calendar) -> String {
         let time = date.formatted(Date.FormatStyle(date: .omitted, time: .shortened))
-        if calendar.isDate(date, inSameDayAs: now) { return "Today \(time)" }
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) { return "Tomorrow \(time)" }
+        if calendar.isDate(date, inSameDayAs: now) { return L("Today %@", time) }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) { return L("Tomorrow %@", time) }
         if date.timeIntervalSince(now) < 6 * 24 * 3600 {
             return "\(date.formatted(Date.FormatStyle().weekday(.abbreviated))) \(time)"
         }
@@ -158,7 +158,7 @@ public enum Derived {
 
     /// "Max 20x" / "Max 5x" / "Pro" / "Team 20x" / "tier ?".
     public static func tierBadge(_ tier: Tier?) -> String {
-        guard let tier, let w = tier.weight else { return "tier ?" }
+        guard let tier, let w = tier.weight else { return L("tier ?") }
         let team = (tier.seatTier ?? "").lowercased().hasPrefix("team")
         switch w {
         case 20: return team ? "Team 20x" : "Max 20x"
@@ -171,11 +171,11 @@ public enum Derived {
     /// status-renderer `formatSessions`.
     public static func formatSessions(_ s: SessionsInfo) -> String {
         let mode: String
-        if s.mode == "adaptive" { mode = "adapting" }
-        else if s.distribute { mode = "distributing" }
-        else if s.draining > 0 { mode = "draining \(s.draining)" }
-        else { mode = "single-account" }
-        return "\(s.active) active / \(s.known) known · \(mode)"
+        if s.mode == "adaptive" { mode = L("adapting") }
+        else if s.distribute { mode = L("distributing") }
+        else if s.draining > 0 { mode = L("draining %d", s.draining) }
+        else { mode = L("single-account") }
+        return L("%d active / %d known · %@", s.active, s.known, mode)
     }
 
     /// Money from minor units (status-renderer / oauth.js `formatMoney`).
@@ -207,14 +207,14 @@ public enum Derived {
     public static func formatAdaptive(_ a: AdaptiveRow) -> String {
         var parts: [String] = []
         let family = bucketLabel(a.bucket ?? Buckets.weekly)
-        let prefix = a.next ? "next · " : ""
-        if let w = a.weight { parts.append("\(prefix)weight \(percentInt(w))% of \(family)") } else { parts.append("\(prefix)weight n/a (all reserved, \(family))") }
-        parts.append("\(a.sessions) sess / \(a.inFlight) inflight")
-        if let h = a.headroom { parts.append("head \(String(format: "%.1f", h * 100))% of \(percentInt(a.threshold ?? 0))%") }
-        parts.append(a.planWeight.map { "plan \(safeInt($0))x" } ?? "plan unknown")
-        if let c = a.concCap { parts.append("conc \(String(format: "%.1f", c))") }
+        let prefix = a.next ? L("next") + " · " : ""
+        if let w = a.weight { parts.append(prefix + L("weight %d%% of %@", percentInt(w), family)) } else { parts.append(prefix + L("weight n/a (all reserved, %@)", family)) }
+        parts.append(L("%d sess / %d inflight", a.sessions, a.inFlight))
+        if let h = a.headroom { parts.append(L("head %@%% of %d%%", String(format: "%.1f", h * 100), percentInt(a.threshold ?? 0))) }
+        parts.append(a.planWeight.map { L("plan %dx", safeInt($0)) } ?? L("plan unknown"))
+        if let c = a.concCap { parts.append(L("conc %@", String(format: "%.1f", c))) }
         let line = parts.joined(separator: " · ")
-        return a.competing ? line : "(not competing) " + line
+        return a.competing ? line : L("(not competing)") + " " + line
     }
 
     /// The current account is out of rotation but traffic already moved on: ordinary rotation, not an emergency.
@@ -229,14 +229,14 @@ public enum Derived {
         let old = previous?.account(named: from) ?? status.account(named: from)
         let new = status.account(named: to)
         if let code = old?.unavailable, let label = UnavailableText.label(code) {
-            let reset = code == "quota" ? old?.quota.unified5hReset.map { " · resets in \(formatReset($0, now: now))" } ?? "" : ""
+            let reset = code == "quota" ? old?.quota.unified5hReset.map { " · " + L("resets in %@", formatReset($0, now: now)) } ?? "" : ""
             return "\(from): \(label)\(reset)"
         }
         if let o = old, let n = new, n.priority < o.priority {
-            return "\(to) outranks \(from) (priority \(n.priority) < \(o.priority))"
+            return L("%@ outranks %@ (priority %d < %d)", to, from, n.priority, o.priority)
         }
         if status.expiryRouting?.enabled == true, status.expiryRouting?.preempt == true {
-            return "expiry routing preferred \(to)"
+            return L("expiry routing preferred %@", to)
         }
         return nil
     }
@@ -272,9 +272,9 @@ extension Derived {
             if target != s.currentAccount, let cur = s.currentAccount, let why = rotationReason(from: cur, to: target, previous: nil, status: s) {
                 parts.append(why)
             }
-            parts.append("prio \(acc.priority)")
-            if acc.sessions > 0 { parts.append("\(acc.sessions) sess\(formatSessionBuckets(acc.sessionsByBucket))") }
-            if let p = acc.pressure, p > 0 { parts.append("pressure \(String(format: "%.2f", p))/s") }
+            parts.append(L("prio %d", acc.priority))
+            if acc.sessions > 0 { parts.append(L("%d sess", acc.sessions) + formatSessionBuckets(acc.sessionsByBucket)) }
+            if let p = acc.pressure, p > 0 { parts.append(L("pressure %@/s", String(format: "%.2f", p))) }
         }
         return NextUp(name: target, reason: parts.joined(separator: " · "), isCurrent: target == s.currentAccount)
     }
@@ -411,7 +411,7 @@ extension Derived {
         }
         if !rows.isEmpty {
             rows.append(RouteRow(
-                kind: .default, name: "", label: "Everything else", match: "",
+                kind: .default, name: "", label: L("Everything else"), match: "",
                 target: s.effectiveDefaultTarget, pinned: nil, pinMismatch: false, blocked: false, autocreated: false,
                 eligible: [], ineligible: [], color: nil,
                 current: s.currentAccount, currentUnavailable: s.current?.unavailable
@@ -432,11 +432,11 @@ extension Derived {
         let hasThrottled = stalled.contains { $0.unavailable == "throttled" }
         let why: String
         if !s.accounts.isEmpty, stalled.count == s.accounts.count {
-            let cause = hasQuota && hasThrottled ? "over its quota threshold or in a rate-limit hold"
-                : hasQuota ? "over its quota threshold" : "in a rate-limit hold"
-            why = " — every account is \(cause)."
+            let cause = hasQuota && hasThrottled ? L("over its quota threshold or in a rate-limit hold")
+                : hasQuota ? L("over its quota threshold") : L("in a rate-limit hold")
+            why = " — " + L("every account is %@.", cause)
         } else {
-            why = " — it is failing, not idle."
+            why = " — " + L("it is failing, not idle.")
         }
 
         let items = (s.raw["sessions"]["items"].array ?? []).filter {
@@ -446,35 +446,33 @@ extension Derived {
             let client = it["client"].string.map { Text.safe($0, max: 32) }
             let id = String((it["id"].string ?? "").prefix(8))
             let project = it["dimensions"]["project"].string.map { Text.safe($0, max: 48) }
-            let head = client.map { "\($0)'s session " } ?? "Session "
+            let head = client.map { L("%@'s session", $0) } ?? L("Session")
             out.append(Problem(severity: .bad, kind: "starved-session",
-                               text: "\(head)\(id) has had \(it["starved"].int ?? 0) requests in a row come back with nothing\(project.map { " (\($0))" } ?? "")\(why)"))
+                               text: L("%@ %@ has had %d requests in a row come back with nothing%@", head, id, it["starved"].int ?? 0, project.map { " (\($0))" } ?? "") + why))
         }
         if items.count > starvedListMax {
-            out.append(Problem(severity: .bad, kind: "starved-more", text: "and \(items.count - starvedListMax) more sessions are getting nothing back."))
+            out.append(Problem(severity: .bad, kind: "starved-more", text: L("and %d more sessions are getting nothing back.", items.count - starvedListMax)))
         }
         if items.isEmpty, let max = s.sessions?.starvedMax, max >= starvedMin {
             out.append(Problem(severity: .bad, kind: "starved-session",
-                               text: "A session has had \(max) requests in a row come back with nothing. Turn on proxy.sessionDetail to see which."))
+                               text: L("A session has had %d requests in a row come back with nothing. Turn on proxy.sessionDetail to see which.", max)))
         }
 
-        let attention = ["error": "needs a re-login", "disabled": "is disabled"]
         for a in s.accounts {
-            if let code = a.unavailable, let text = attention[code] {
-                out.append(Problem(severity: .warn, kind: "account", text: "Account \(a.name) \(text)."))
-            }
+            if a.unavailable == "error" { out.append(Problem(severity: .warn, kind: "account", text: L("Account %@ needs a re-login.", a.name))) }
+            if a.unavailable == "disabled" { out.append(Problem(severity: .warn, kind: "account", text: L("Account %@ is disabled.", a.name))) }
         }
         return out
     }
 
     /// dashboard.js `switchOutcome`: recorded and taking effect are two different things.
     public static func switchOutcome(_ r: SwitchResult) -> SwitchOutcome {
-        if !r.ok { return SwitchOutcome(kind: .error, text: "switch failed" + (r.error.map { ": \($0)" } ?? "")) }
+        if !r.ok { return SwitchOutcome(kind: .error, text: L("switch failed") + (r.error.map { ": \($0)" } ?? "")) }
         let name = r.account ?? ""
         if r.eligible == false {
-            return SwitchOutcome(kind: .warn, text: "switched to \(name), but rotation will not use it" + (r.reason.map { ": \($0)" } ?? ""))
+            return SwitchOutcome(kind: .warn, text: L("switched to %@, but rotation will not use it", name) + (r.reason.map { ": \($0)" } ?? ""))
         }
-        return SwitchOutcome(kind: .ok, text: "switched to \(name)")
+        return SwitchOutcome(kind: .ok, text: L("switched to %@", name))
     }
 
     /// Every account is out of rotation: requests will queue or 429.
@@ -485,6 +483,6 @@ extension Derived {
     /// Why nothing can serve, for the hold banner and the hold notification.
     public static func holdReason(_ s: StatusSnapshot) -> String {
         let stalled = s.accounts.filter { $0.unavailable == "quota" || $0.unavailable == "throttled" }
-        return stalled.count == s.accounts.count ? "every account is over its quota threshold or in a rate-limit hold" : "every account is out of rotation"
+        return stalled.count == s.accounts.count ? L("every account is over its quota threshold or in a rate-limit hold") : L("every account is out of rotation")
     }
 }

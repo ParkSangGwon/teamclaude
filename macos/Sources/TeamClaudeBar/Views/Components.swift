@@ -173,7 +173,7 @@ struct UsageRow: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title) \(ratio.map { Derived.formatPercent($0) } ?? "unknown") \(Derived.formatResetLong(resetAt, style: .countdown, now: now))")
+        .accessibilityLabel("\(title) \(ratio.map { Derived.formatPercent($0) } ?? L("unknown")) \(Derived.formatResetLong(resetAt, style: .countdown, now: now))")
     }
 
     func level(_ ratio: Double) -> Level {
@@ -209,7 +209,7 @@ struct Banner: View {
             }
             if let onDismiss {
                 Button(action: onDismiss) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Hide for this session")
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help(L("Hide for this session"))
             }
         }
         .padding(.horizontal, 9).padding(.vertical, 7)

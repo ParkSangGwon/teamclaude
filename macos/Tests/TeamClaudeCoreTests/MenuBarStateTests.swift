@@ -54,7 +54,7 @@ final class MenuBarStateTests: XCTestCase {
     func testEmptyAccounts() throws {
         let m = MenuBarState.compute(inputs(status: try Fixtures.status("status-empty.json")))
         XCTAssertEqual(m.state, .noAccounts)
-        XCTAssertEqual(m.label, "0")
+        XCTAssertEqual(m.label, "5h 0")
         XCTAssertEqual(m.fiveHour, 0)
         XCTAssertEqual(m.weekly, 0)
         XCTAssertTrue(m.tooltip.contains("No accounts configured"))
@@ -68,7 +68,7 @@ final class MenuBarStateTests: XCTestCase {
         XCTAssertEqual(MenuBarState.compute(inputs(age: 181, pollInterval: 60)).state, .stale)
         let m = MenuBarState.compute(inputs(age: 200, pollInterval: 30))
         XCTAssertTrue(m.tooltip.hasPrefix("Data is 4m old — the proxy answered slowly or not at all · "), m.tooltip)
-        XCTAssertEqual(m.label, "30%", "the bars keep showing the last numbers")
+        XCTAssertEqual(m.label, "5h 30%", "the bars keep showing the last numbers")
     }
 
     func testStaleOutranksCritical() {
@@ -92,12 +92,12 @@ final class MenuBarStateTests: XCTestCase {
         // threshold 0.98 → critical from 0.93 up.
         let critical = MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.93, weekly: 0.1)))
         XCTAssertEqual(critical.state, .critical)
-        XCTAssertEqual(critical.label, "93%!")
+        XCTAssertEqual(critical.label, "5h 93%!")
         XCTAssertTrue(critical.tooltip.hasPrefix("Critical: at the switch threshold · "))
         XCTAssertEqual(MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.1, weekly: 0.93))).state, .critical, "either bar")
         let warning = MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.92, weekly: 0.1)))
         XCTAssertEqual(warning.state, .warning)
-        XCTAssertEqual(warning.label, "92%")
+        XCTAssertEqual(warning.label, "5h 92%")
         XCTAssertTrue(warning.tooltip.hasPrefix("Warning · "))
     }
 
@@ -107,14 +107,14 @@ final class MenuBarStateTests: XCTestCase {
         XCTAssertEqual(m.state, .critical)
         XCTAssertTrue(m.tooltip.hasPrefix("Critical: every account is out of rotation · "))
         XCTAssertTrue(m.tooltip.hasSuffix("0/2 accounts available"))
-        XCTAssertEqual(m.label, "10%!")
+        XCTAssertEqual(m.label, "5h 10%!")
     }
 
     func testCriticalWhenCurrentAccountIsOverQuota() {
         let s = makeStatus(current: "bob", accounts: [accountJSON("alice", fiveHour: 0.1), accountJSON("bob", unavailable: "quota", fiveHour: 0.99)])
         let m = MenuBarState.compute(inputs(status: s, quota: makeQuota(fiveHour: 0.2, weekly: 0.2)))
         XCTAssertEqual(m.state, .critical)
-        XCTAssertEqual(m.label, "20%!")
+        XCTAssertEqual(m.label, "5h 20%!")
         XCTAssertTrue(m.tooltip.hasPrefix("Critical: the current account cannot serve and nothing else can take over"), m.tooltip)
         // Rotation already moved on (a routing target other than the blocked current account): ordinary, not critical.
         let rotated = makeStatus(current: "bob", accounts: [accountJSON("alice", fiveHour: 0.1), accountJSON("bob", unavailable: "quota", fiveHour: 0.99)], extra: ["defaultTarget": .string("alice")])
@@ -141,7 +141,7 @@ final class MenuBarStateTests: XCTestCase {
         XCTAssertEqual(m.state, .normal)
         XCTAssertEqual(m.fiveHour, 0.3)
         XCTAssertEqual(m.weekly, 0.4)
-        XCTAssertEqual(m.label, "30%")
+        XCTAssertEqual(m.label, "5h 30%")
         XCTAssertNil(m.tag)
     }
 
@@ -149,7 +149,7 @@ final class MenuBarStateTests: XCTestCase {
         let m = MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.3, weekly: 0.4), pinCurrent: true))
         XCTAssertEqual(m.fiveHour, 0.42)
         XCTAssertEqual(m.weekly, 0.61)
-        XCTAssertEqual(m.label, "42%")
+        XCTAssertEqual(m.label, "5h 42%")
         XCTAssertEqual(m.tag, "ali")
     }
 
@@ -173,14 +173,14 @@ final class MenuBarStateTests: XCTestCase {
         let m = MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.3, weekly: 0.4), showRemaining: true))
         XCTAssertEqual(try XCTUnwrap(m.fiveHour), 0.7, accuracy: 1e-12)
         XCTAssertEqual(try XCTUnwrap(m.weekly), 0.6, accuracy: 1e-12)
-        XCTAssertEqual(m.label, "70%")
+        XCTAssertEqual(m.label, "5h 70%")
         let pinned = MenuBarState.compute(inputs(pinCurrent: true, showRemaining: true))
         XCTAssertEqual(try XCTUnwrap(pinned.fiveHour), 0.58, accuracy: 1e-12)
-        XCTAssertEqual(pinned.label, "58%")
+        XCTAssertEqual(pinned.label, "5h 58%")
         // Severity is judged on usage, not on the flipped fill.
         let critical = MenuBarState.compute(inputs(quota: makeQuota(fiveHour: 0.95), showRemaining: true))
         XCTAssertEqual(critical.state, .critical)
-        XCTAssertEqual(critical.label, "5%!")
+        XCTAssertEqual(critical.label, "5h 5%!")
     }
 
     func testTooltipMentionsCurrentAccountAndAvailability() {

@@ -50,13 +50,13 @@ public enum MenuBarState {
 
         if !i.reachable, age == nil || age! > 10 {
             return IconModel(state: .proxyDown, fiveHour: nil, weekly: nil, label: "—",
-                             tooltip: "TeamClaude proxy not reachable" + (age.map { " · last data \(Derived.formatDuration($0)) ago" } ?? ""), tag: nil)
+                             tooltip: L("TeamClaude proxy not reachable") + (age.map { " · " + L("last data %@ ago", Derived.formatDuration($0)) } ?? ""), tag: nil)
         }
         guard let status = i.status else {
-            return IconModel(state: .starting, fiveHour: nil, weekly: nil, label: nil, tooltip: "TeamClaude: connecting to the proxy…", tag: nil)
+            return IconModel(state: .starting, fiveHour: nil, weekly: nil, label: nil, tooltip: L("TeamClaude: connecting to the proxy…"), tag: nil)
         }
         if status.accounts.isEmpty {
-            return IconModel(state: .noAccounts, fiveHour: 0, weekly: 0, label: "0", tooltip: "No accounts configured — open Settings → Accounts", tag: nil)
+            return IconModel(state: .noAccounts, fiveHour: 0, weekly: 0, label: "5h 0", tooltip: L("No accounts configured — open Settings → Accounts"), tag: nil)
         }
 
         // Source of the bars: fleet aggregate by default, the current account when pinned
@@ -102,27 +102,28 @@ public enum MenuBarState {
             state = .normal
         }
 
-        var label: String? = fiveHour.map { "\(Derived.percentInt(i.showRemaining ? 1 - $0 : $0))%" }
+        // The window's name leads the number: a battery never says "5h", so the item reads as usage at a glance.
+        var label: String? = fiveHour.map { "5h \(Derived.percentInt(i.showRemaining ? 1 - $0 : $0))%" }
         if case .rotating(let to) = state { label = "→ \(shortName(to))" }
         if state == .critical, let l = label, !l.hasSuffix("!") { label = l + "!" }
 
         var parts: [String] = ["TeamClaude"]
-        if let cur = current { parts.append("current \(cur.name)") }
+        if let cur = current { parts.append(L("current %@", cur.name)) }
         if let f = fiveHour { parts.append("5h \(Derived.percentInt(f))%") }
         if let w = weekly { parts.append("7d \(Derived.percentInt(w))%") }
         if let cur = current, let fable = cur.quota.unified7dFable { parts.append("Fable \(Derived.percentInt(fable))%") }
         if let cur = current, let reset = cur.quota.unified5hReset {
             let r = Derived.formatReset(reset, now: i.now)
-            if !r.isEmpty { parts.append("5h resets in \(r)") }
+            if !r.isEmpty { parts.append(L("5h resets in %@", r)) }
         }
         let available = status.accounts.filter { $0.unavailable == nil }.count
-        parts.append("\(available)/\(status.accounts.count) accounts available")
+        parts.append(L("%d/%d accounts available", available, status.accounts.count))
         var tooltip = parts.joined(separator: " · ")
         switch state {
-        case .critical: tooltip = (hold ? "Critical: every account is out of rotation" : stuck ? "Critical: the current account cannot serve and nothing else can take over" : "Critical: at the switch threshold") + " · " + tooltip
-        case .warning: tooltip = "Warning · " + tooltip
-        case .stale: tooltip = "Data is \(Derived.formatDuration(age ?? 0)) old — the proxy answered slowly or not at all · " + tooltip
-        case .rotating(let to): tooltip = "Rotated to \(to) · " + tooltip
+        case .critical: tooltip = (hold ? L("Critical: every account is out of rotation") : stuck ? L("Critical: the current account cannot serve and nothing else can take over") : L("Critical: at the switch threshold")) + " · " + tooltip
+        case .warning: tooltip = L("Warning") + " · " + tooltip
+        case .stale: tooltip = L("Data is %@ old — the proxy answered slowly or not at all", Derived.formatDuration(age ?? 0)) + " · " + tooltip
+        case .rotating(let to): tooltip = L("Rotated to %@", to) + " · " + tooltip
         default: break
         }
 

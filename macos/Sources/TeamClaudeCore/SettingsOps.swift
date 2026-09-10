@@ -216,8 +216,8 @@ public enum SettingsError: Error, Sendable, Equatable {
 
     public var message: String {
         switch self {
-        case .noSuchAccount(let n): return "No account named \(n)"
-        case .ambiguousAccount(let n): return "\(n) matches more than one account — pick it by organization"
+        case .noSuchAccount(let n): return L("No account named %@", n)
+        case .ambiguousAccount(let n): return L("%@ matches more than one account — pick it by organization", n)
         case .invalid(let why): return why
         }
     }
@@ -273,9 +273,9 @@ public struct SettingsOps: Sendable {
             outcome.added = r.added
         } catch let e as ProxyError {
             // Only "nothing is listening" means the change waits for a start; a 401/404/500 is a running proxy saying no.
-            if case .unreachable = e { outcome.note = "Saved to the config; it applies when the proxy starts" } else { outcome.note = e.message }
+            if case .unreachable = e { outcome.note = L("Saved to the config; it applies when the proxy starts") } else { outcome.note = e.message }
         } catch {
-            outcome.note = "Saved to the config; reload failed: \(error.localizedDescription)"
+            outcome.note = L("Saved to the config; reload failed: %@", error.localizedDescription)
         }
         return outcome
     }
@@ -288,21 +288,21 @@ public enum SettingsValidation {
         let s = raw.trimmingCharacters(in: .whitespaces)
         if s.isEmpty { return nil }
         let withScheme = s.contains("://") ? s : "http://" + s
-        guard let url = URL(string: withScheme), let scheme = url.scheme?.lowercased() else { return "Not a valid proxy URL" }
-        guard scheme == "http" else { return "Only http:// proxies are supported" }
-        guard let host = url.host, !host.isEmpty else { return "A host is required" }
-        if let port = url.port, !(1...65535).contains(port) { return "Port must be 1–65535" }
+        guard let url = URL(string: withScheme), let scheme = url.scheme?.lowercased() else { return L("Not a valid proxy URL") }
+        guard scheme == "http" else { return L("Only http:// proxies are supported") }
+        guard let host = url.host, !host.isEmpty else { return L("A host is required") }
+        if let port = url.port, !(1...65535).contains(port) { return L("Port must be 1–65535") }
         return nil
     }
 
     public static func timeHHMM(_ s: String) -> String? {
         let parts = s.split(separator: ":")
-        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]), (0...23).contains(h), (0...59).contains(m) else { return "Time must be HH:MM" }
+        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]), (0...23).contains(h), (0...59).contains(m) else { return L("Time must be HH:MM") }
         return nil
     }
 
     public static func timezone(_ s: String) -> String? {
-        TimeZone(identifier: s) == nil ? "Not an IANA time zone" : nil
+        TimeZone(identifier: s) == nil ? L("Not an IANA time zone") : nil
     }
 
     public static let reservedDimensionHeaders: Set<String> = [

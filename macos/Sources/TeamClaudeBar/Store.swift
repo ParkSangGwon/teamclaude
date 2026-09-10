@@ -159,7 +159,7 @@ final class AppStore {
         var port = s.port
         if !ProxyEndpoint.isValid(host: host, port: port) {
             // A hand-edited value the app cannot dial must not become a crash loop; say so and use the defaults.
-            configError = "proxy.host/port in the config (\(s.host):\(s.port)) cannot be dialled; using 127.0.0.1:3456"
+            configError = L("proxy.host/port in the config (%@) cannot be dialled; using 127.0.0.1:3456", "\(s.host):\(s.port)")
             host = "127.0.0.1"; port = 3456
         }
         let ep = ProxyEndpoint(host: host, port: port, apiKey: s.apiKey)
@@ -193,7 +193,7 @@ final class AppStore {
         guard !updateRunning else { return }
         updateRunning = true
         updateNote = nil
-        showToast(.info, "Checking npm for a newer teamclaude…")
+        showToast(.info, L("Checking npm for a newer teamclaude…"))
         do {
             let r = try await runner.run(["update"], timeout: 600)
             let installed = UpdateCheck.installedVersion(fromUpdateOutput: r.stdout)
@@ -201,14 +201,14 @@ final class AppStore {
                 // The running proxy is still the old version until it restarts; the version gate must not move early.
                 installedVersion = installed
                 restartPending.insert("teamclaude \(installed)")
-                updateNote = "Updated to \(installed) — restart the proxy to run it"
+                updateNote = L("Updated to %@ — restart the proxy to run it", installed)
                 showToast(.ok, updateNote!)
             } else if r.succeeded {
                 updateNote = r.stdout.split(separator: "\n").last.map(String.init) ?? "Already up to date"
                 showToast(.info, updateNote!)
             } else {
                 updateNote = r.failureMessage
-                showToast(.error, "Update failed: \(r.failureMessage)")
+                showToast(.error, L("Update failed: %@", r.failureMessage))
             }
         } catch let e as CLIError {
             updateNote = e.message
@@ -270,7 +270,7 @@ final class AppStore {
             lastSuccessAt = Date()
             let wasDown = { if case .down = connection { return true } else { return false } }()
             connection = .up
-            if wasDown { showToast(.ok, "Proxy is back") }
+            if wasDown { showToast(.ok, L("Proxy is back")) }
             refreshAliases(s)
             // A `startedAt` later than the restart request is the restart, whether or not the proxy answered before it.
             // A server that reports no `startedAt` cannot be watched, so any answer after the request counts.
@@ -279,7 +279,7 @@ final class AppStore {
                 restartWatchUntil = nil
                 restartPending.removeAll()
                 if let installedVersion { cliVersion = installedVersion; self.installedVersion = nil }
-                showToast(.ok, "Proxy restarted")
+                showToast(.ok, L("Proxy restarted"))
             }
             let prevTarget = previousStatus?.effectiveDefaultTarget
             // The same ten-second window the alert engine uses for "the app did this itself".
@@ -290,7 +290,7 @@ final class AppStore {
                     rotatedTo = cur
                 }
                 let reason = Derived.rotationReason(from: prev, to: cur, previous: previousStatus, status: s)
-                prefs.rotationLog.append(RotationEvent(at: Date(), from: prev, to: cur, reason: justSwitchedTo == cur ? "switched from the app" : reason, manual: justSwitchedTo == cur))
+                prefs.rotationLog.append(RotationEvent(at: Date(), from: prev, to: cur, reason: justSwitchedTo == cur ? L("switched from the app") : reason, manual: justSwitchedTo == cur))
             }
         case .failure(let e):
             failureStreak += 1
@@ -371,7 +371,8 @@ final class AppStore {
 
     var restartPendingText: String? {
         guard !restartPending.isEmpty else { return nil }
-        return "\(restartPending.count) change\(restartPending.count == 1 ? "" : "s") need a proxy restart (\(restartPending.sorted().joined(separator: ", ")))"
+        let changes = restartPending.count == 1 ? L("1 change needs a proxy restart") : L("%d changes need a proxy restart", restartPending.count)
+        return changes + " (" + restartPending.sorted().joined(separator: ", ") + ")"
     }
 
     var iconModel: IconModel {
@@ -394,16 +395,16 @@ final class AppStore {
                 await poll()
             } catch let e as ProxyError {
                 if e == .unsupported { switchSupported = false }
-                showToast(.error, "Switch failed: \(e.message)")
+                showToast(.error, L("Switch failed: %@", e.message))
             } catch {
-                showToast(.error, "Switch failed: \(error.localizedDescription)")
+                showToast(.error, L("Switch failed: %@", error.localizedDescription))
             }
         }
     }
 
     /// The hotkey: move traffic to the next account in priority order that can serve, wrapping around.
     func switchToNextAvailable() {
-        guard let status, !status.accounts.isEmpty else { showToast(.warn, "No accounts to switch between"); return }
+        guard let status, !status.accounts.isEmpty else { showToast(.warn, L("No accounts to switch between")); return }
         let ordered = status.accountsByPriority
         let start = ordered.firstIndex { $0.name == status.currentAccount } ?? -1
         for offset in 1...ordered.count {
@@ -413,7 +414,7 @@ final class AppStore {
                 return
             }
         }
-        showToast(.warn, "No other account can serve right now")
+        showToast(.warn, L("No other account can serve right now"))
     }
 
     /// `POST /teamclaude/reload`; the result is what callers report, not a guess.
@@ -421,13 +422,13 @@ final class AppStore {
     func reloadConfig() async -> Bool {
         do {
             let r = try await client.reload()
-            showToast(.ok, r.added > 0 ? "Reloaded (+\(r.added) new account)" : "Reloaded")
+            showToast(.ok, r.added > 0 ? L("Reloaded (+%d new)", r.added) : L("Reloaded"))
             await poll()
             return r.ok
         } catch let e as ProxyError {
-            showToast(.error, "Reload failed: \(e.message)")
+            showToast(.error, L("Reload failed: %@", e.message))
         } catch {
-            showToast(.error, "Reload failed: \(error.localizedDescription)")
+            showToast(.error, L("Reload failed: %@", error.localizedDescription))
         }
         return false
     }
@@ -452,11 +453,11 @@ final class AppStore {
             let outcome = try await settingsOps.apply(change)
             if outcome.restartRequired {
                 restartPending.insert(label)
-                showToast(.warn, "\(label) saved — restart the proxy to apply")
+                showToast(.warn, L("%@ saved — restart the proxy to apply", label))
             } else if let note = outcome.note {
                 showToast(.warn, "\(label): \(note)")
             } else {
-                showToast(.ok, "\(label) applied")
+                showToast(.ok, L("%@ applied", label))
             }
             // A live proxy key change moves the client now; a port or host change waits for the restart it needs.
             if case .json(let path, _, _) = change, path.first == "proxy", !outcome.restartRequired { reloadEndpoint() }
@@ -477,18 +478,18 @@ final class AppStore {
 
     // Account actions the card and the table share, with one wording each.
     func setPriority(_ name: String, org: String? = nil, _ value: PriorityValue) async {
-        await apply(.priority(account: name, org: org, value: value), label: "Priority of \(displayName(name))")
+        await apply(.priority(account: name, org: org, value: value), label: L("Priority of %@", displayName(name)))
     }
 
     func setEnabled(_ name: String, org: String? = nil, _ enabled: Bool) async {
-        await apply(.enabled(account: name, org: org, enabled: enabled), label: enabled ? "Enable \(displayName(name))" : "Disable \(displayName(name))")
+        await apply(.enabled(account: name, org: org, enabled: enabled), label: enabled ? L("Enable %@", displayName(name)) : L("Disable %@", displayName(name)))
     }
 
     func removeAccount(_ name: String, org: String? = nil) async {
-        await apply(.removeAccount(name: name, org: org), label: "Remove \(displayName(name))")
+        await apply(.removeAccount(name: name, org: org), label: L("Remove %@", displayName(name)))
     }
 
-    static let removeAccountMessage = "The entry leaves the config now; the proxy keeps serving it until it restarts."
+    static var removeAccountMessage: String { L("The entry leaves the config now; the proxy keeps serving it until it restarts.") }
 
     func runCLI(_ args: [String], stdin: String? = nil, stdinWriter: StdinWriter? = nil, timeout: TimeInterval = 30,
                 onLine: (@Sendable (OutputLine) -> Void)? = nil) async throws -> CLIResult {
@@ -506,7 +507,7 @@ final class AppStore {
                                                      arguments: ["kickstart", "-k", "gui/\(uid)/\(ProxyLocator.launchAgentLabel)"],
                                                      environment: ProcessInfo.processInfo.environment, timeout: 15)
             if result.succeeded {
-                showToast(.info, "Restarting the proxy…")
+                showToast(.info, L("Restarting the proxy…"))
                 return
             }
             showToast(.error, "launchctl: \(result.failureMessage)")
@@ -546,7 +547,7 @@ final class AppStore {
             let ok = await reloadConfig()
             return ok
         } catch {
-            showToast(.error, "Could not write the config: \(error.localizedDescription)")
+            showToast(.error, L("Could not write the config: %@", error.localizedDescription))
             return false
         }
     }
@@ -574,7 +575,7 @@ final class AppStore {
     func service(_ verb: String) async {
         do {
             let r = try await runner.run(["service", verb], timeout: 30)
-            if r.succeeded { showToast(.ok, "Service \(verb) done") } else { showToast(.error, "service \(verb): \(r.failureMessage)") }
+            if r.succeeded { showToast(.ok, L("Service %@ done", verb)) } else { showToast(.error, "service \(verb): \(r.failureMessage)") }
         } catch let e as CLIError {
             showToast(.error, e.message)
         } catch {
@@ -589,7 +590,7 @@ final class AppStore {
     /// The owner is looked up again first: the diagnosis may be minutes old and pids get reused.
     func quitPortOwnerAndRestart(pid: Int) async {
         guard let owner = await portOwner(), owner.pid == pid else {
-            showToast(.warn, "That process no longer holds the port")
+            showToast(.warn, L("That process no longer holds the port"))
             await refreshServiceHealth()
             return
         }
@@ -597,11 +598,11 @@ final class AppStore {
         let argv = (try? await CLIRunner.execute(executable: URL(fileURLWithPath: "/bin/ps"), arguments: ["-o", "command=", "-p", String(pid)],
                                                  environment: ProcessInfo.processInfo.environment, timeout: 5))?.stdout ?? ""
         guard argv.contains("teamclaude") else {
-            showToast(.error, "Port \(endpoint.port) is held by \(owner.command.isEmpty ? "pid \(pid)" : owner.command), not teamclaude — quit it yourself or change the port")
+            showToast(.error, L("Port %d is held by %@, not teamclaude — quit it yourself or change the port", endpoint.port, owner.command.isEmpty ? "pid \(pid)" : owner.command))
             return
         }
         if kill(pid_t(pid), SIGTERM) != 0 {
-            showToast(.error, "Could not signal pid \(pid): \(String(cString: strerror(errno)))")
+            showToast(.error, L("Could not signal pid %d: %@", pid, String(cString: strerror(errno))))
             return
         }
         try? await Task.sleep(for: .seconds(2))
@@ -613,9 +614,9 @@ final class AppStore {
     func deleteStateFile() {
         do {
             try FileManager.default.removeItem(at: configFile.statePath)
-            showToast(.ok, "State file deleted")
+            showToast(.ok, L("State file deleted"))
         } catch {
-            showToast(.error, "Could not delete the state file: \(error.localizedDescription)")
+            showToast(.error, L("Could not delete the state file: %@", error.localizedDescription))
         }
     }
 
@@ -640,10 +641,10 @@ final class AppStore {
             app.append("service \(serviceDiagnosis?.text ?? "not checked")")
             app.append("macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
             try app.joined(separator: "\n").write(to: dir.appending(path: "app.txt"), atomically: true, encoding: .utf8)
-            showToast(.ok, "Diagnostics written to Downloads")
+            showToast(.ok, L("Diagnostics written to Downloads"))
             return dir
         } catch {
-            showToast(.error, "Could not export diagnostics: \(error.localizedDescription)")
+            showToast(.error, L("Could not export diagnostics: %@", error.localizedDescription))
             return nil
         }
     }

@@ -24,9 +24,9 @@ final class Preferences {
         }
         var title: String {
             switch self {
-            case .fast: return "Fast (2 s / 15 s)"
-            case .normal: return "Normal (2 s / 30 s)"
-            case .powerSaver: return "Power saver (5 s / 60 s)"
+            case .fast: return L("Fast (2 s / 15 s)")
+            case .normal: return L("Normal (2 s / 30 s)")
+            case .powerSaver: return L("Power saver (5 s / 60 s)")
             }
         }
     }
@@ -46,6 +46,8 @@ final class Preferences {
     var alertPrefs: AlertPrefs { didSet { d.set(try? JSONEncoder().encode(alertPrefs), forKey: "alertPrefs") } }
     var alertState: AlertState { didSet { d.set(try? JSONEncoder().encode(alertState), forKey: "alertState") } }
     var rotationLog: RotationLog { didSet { d.set(try? JSONEncoder().encode(rotationLog), forKey: "rotationLog") } }
+    /// UI language code from `L10n.supported`; nil follows the Mac's language setting.
+    var language: String? { didSet { d.set(language, forKey: "language"); L10n.activate(language) } }
 
     var pollOpen: TimeInterval { refresh.intervals.open }
     var pollClosed: TimeInterval { refresh.intervals.closed }
@@ -68,5 +70,7 @@ final class Preferences {
         alertPrefs = (d.data(forKey: "alertPrefs").flatMap { try? JSONDecoder().decode(AlertPrefs.self, from: $0) }) ?? AlertPrefs()
         alertState = (d.data(forKey: "alertState").flatMap { try? JSONDecoder().decode(AlertState.self, from: $0) }) ?? AlertState()
         rotationLog = (d.data(forKey: "rotationLog").flatMap { try? JSONDecoder().decode(RotationLog.self, from: $0) }) ?? RotationLog()
+        language = d.string(forKey: "language")
+        L10n.activate(language)
     }
 }

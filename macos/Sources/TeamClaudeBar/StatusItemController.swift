@@ -18,6 +18,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var lastModel: IconModel?
     private var lastStyle: Preferences.IconStyle?
     private var lastMono: Bool?
+    private var lastLanguage: String??
 
     static let autosaveName = "teamclaudeBar.main"
 
@@ -77,8 +78,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let model = store.iconModel
         let style = store.prefs.iconStyle
         let mono = store.prefs.monochrome
+        let language = store.prefs.language   // the tooltip is localized; a change must re-render
         guard let button = item.button else { return }
-        if model == lastModel, style == lastStyle, mono == lastMono { return }
+        if model == lastModel, style == lastStyle, mono == lastMono, language == lastLanguage { return }
+        lastLanguage = language
         lastModel = model; lastStyle = style; lastMono = mono
         let rendered = IconRenderer.render(model, style: style, monochrome: mono)
         if popover.isShown { resizePopover() }
@@ -138,26 +141,26 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func showMenu() {
         let menu = NSMenu()
         let current = store.status?.currentAccount
-        let head = NSMenuItem(title: current.map { "Current: \(store.displayName($0))" } ?? "TeamClaude", action: nil, keyEquivalent: "")
+        let head = NSMenuItem(title: current.map { L("Current: %@", store.displayName($0)) } ?? "TeamClaude", action: nil, keyEquivalent: "")
         head.isEnabled = false
         menu.addItem(head)
         if store.status?.accounts.count ?? 0 > 1 {
-            let next = menu.addItem(withTitle: "Switch to Next Available Account", action: #selector(switchNext), keyEquivalent: "")
+            let next = menu.addItem(withTitle: L("Switch to Next Available Account"), action: #selector(switchNext), keyEquivalent: "")
             next.target = self
             next.isEnabled = !store.isDown && store.switchSupported
         }
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Refresh", action: #selector(refresh), keyEquivalent: "r").target = self
-        menu.addItem(withTitle: "Reload Config", action: #selector(reload), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboard), keyEquivalent: "d").target = self
-        menu.addItem(withTitle: "Attach in Terminal", action: #selector(attach), keyEquivalent: "t").target = self
-        menu.addItem(withTitle: "Open Proxy Log", action: #selector(openLog), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Refresh"), action: #selector(refresh), keyEquivalent: "r").target = self
+        menu.addItem(withTitle: L("Reload Config"), action: #selector(reload), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Open Dashboard"), action: #selector(openDashboard), keyEquivalent: "d").target = self
+        menu.addItem(withTitle: L("Attach in Terminal"), action: #selector(attach), keyEquivalent: "t").target = self
+        menu.addItem(withTitle: L("Open Proxy Log"), action: #selector(openLog), keyEquivalent: "").target = self
         menu.addItem(.separator())
         let paused = store.prefs.alertPrefs.isPaused(at: Date())
-        menu.addItem(withTitle: paused ? "Resume Notifications" : "Pause Notifications for 1 Hour", action: #selector(togglePause), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: paused ? L("Resume Notifications") : L("Pause Notifications for 1 Hour"), action: #selector(togglePause), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Settings…"), action: #selector(settings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit TeamClaude Bar", action: #selector(quit), keyEquivalent: "q").target = self
+        menu.addItem(withTitle: L("Quit TeamClaude Bar"), action: #selector(quit), keyEquivalent: "q").target = self
         menu.autoenablesItems = false
         item.menu = menu
         item.button?.performClick(nil)
@@ -213,7 +216,7 @@ enum Actions {
     @MainActor static func openDashboard(_ store: AppStore) {
         if let key = store.endpoint.apiKey, !key.isEmpty {
             copySecret(key)
-            store.showToast(.info, "Proxy key copied — paste it if the dashboard asks")
+            store.showToast(.info, L("Proxy key copied — paste it if the dashboard asks"))
         }
         NSWorkspace.shared.open(store.endpoint.dashboardURL)
     }

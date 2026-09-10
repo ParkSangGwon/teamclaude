@@ -14,25 +14,25 @@ struct AccountsPane: View {
             HStack {
                 Text("\(rows.count) account\(rows.count == 1 ? "" : "s") in the config").font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Menu("Add account…") {
-                    Button("Claude subscription (browser sign-in)") { adding = .oauth }
-                    Button("Claude subscription (paste code)") { adding = .token }
-                    Button("Anthropic API key") { adding = .apiKey }
-                    Button("OpenAI Codex subscription") { adding = .codex }
+                Menu(L("Add account…")) {
+                    Button(L("Claude subscription (browser sign-in)")) { adding = .oauth }
+                    Button(L("Claude subscription (paste code)")) { adding = .token }
+                    Button(L("Anthropic API key")) { adding = .apiKey }
+                    Button(L("OpenAI Codex subscription")) { adding = .codex }
                     Divider()
-                    Button("Import from Claude Code") { adding = .importCLI }
-                    Button("Import from a credentials file…") { adding = .importFile }
+                    Button(L("Import from Claude Code")) { adding = .importCLI }
+                    Button(L("Import from a credentials file…")) { adding = .importFile }
                 }.fixedSize()
             }
             if rows.isEmpty {
-                Text("No accounts yet — add a Claude subscription, an API key, or import the one Claude Code is logged into.").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(L("No accounts yet — add a Claude subscription, an API key, or import the one Claude Code is logged into.")).font(.system(size: 12)).foregroundStyle(.secondary)
             }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 AccountCard(row: row, live: store.status?.account(named: row["name"].string ?? ""), tier: store.quota?.account(named: row["name"].string ?? "")?.tier,
                             expanded: expanded.contains(row["name"].string ?? ""),
                             toggle: { let n = row["name"].string ?? ""; if expanded.contains(n) { expanded.remove(n) } else { expanded.insert(n) } })
             }
-            Text("Priority: lower is preferred; a strictly lower value preempts a healthy current account. Disabling keeps the entry but takes it out of rotation. Removing needs a proxy restart.").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(L("Priority: lower is preferred; a strictly lower value preempts a healthy current account. Disabling keeps the entry but takes it out of rotation. Removing needs a proxy restart.")).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .sheet(item: $adding) { mode in AddAccountSheet(mode: mode) { adding = nil } }
     }
@@ -57,49 +57,49 @@ struct AccountCard: View {
                 Image(systemName: "arrowtriangle.right.fill").font(.system(size: 8)).foregroundStyle(isCurrent ? Color.accentColor : Color.clear)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(store.displayName(name)).font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.middle)
-                    Text([row["orgName"].string, row["type"].string, row["provider"].string, row["importFrom"].string.map { "from \($0)" }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text([row["orgName"].string, row["type"].string, row["provider"].string, row["importFrom"].string.map { L("from %@", $0) }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Chip(text: Derived.tierBadge(tier))
                 if let live {
-                    Chip(text: live.disabled ? "disabled" : live.status, color: live.disabled ? .secondary : live.status == "active" ? .green : live.status == "throttled" ? .yellow : .red)
+                    Chip(text: live.disabled ? L("disabled") : L(live.status), color: live.disabled ? .secondary : live.status == "active" ? .green : live.status == "throttled" ? .yellow : .red)
                     if let why = UnavailableText.label(live.unavailable) { Chip(text: why, color: .yellow) }
                 } else if row["disabled"].bool == true {
-                    Chip(text: "disabled", color: .secondary)
+                    Chip(text: L("disabled"), color: .secondary)
                 } else {
-                    Chip(text: "not loaded", color: .secondary)
+                    Chip(text: L("not loaded"), color: .secondary)
                 }
                 Spacer()
-                if !isCurrent, live != nil { Button("Make current") { store.switchTo(name) }.controlSize(.small) }
+                if !isCurrent, live != nil { Button(L("Make current")) { store.switchTo(name) }.controlSize(.small) }
                 Button(expanded ? "Less" : "More") { toggle() }.controlSize(.small)
             }
             HStack(spacing: 12) {
-                Toggle("On", isOn: Binding(get: { row["disabled"].bool != true }, set: { on in Task { await store.setEnabled(name, org: row["orgUuid"].string, on) } })).toggleStyle(.switch).controlSize(.small)
+                Toggle(L("On"), isOn: Binding(get: { row["disabled"].bool != true }, set: { on in Task { await store.setEnabled(name, org: row["orgUuid"].string, on) } })).toggleStyle(.switch).controlSize(.small)
                 HStack(spacing: 4) {
-                    Text("Priority").font(.system(size: 12)).fixedSize()
-                    TextField("Priority", text: $priorityText).labelsHidden().textFieldStyle(.roundedBorder).frame(width: 50).multilineTextAlignment(.trailing).onSubmit(applyPriority)
-                    Button("Top") { Task { await store.setPriority(name, org: row["orgUuid"].string, .first) } }.controlSize(.mini).fixedSize()
-                    Button("Bottom") { Task { await store.setPriority(name, org: row["orgUuid"].string, .last) } }.controlSize(.mini).fixedSize()
+                    Text(L("Priority")).font(.system(size: 12)).fixedSize()
+                    TextField(L("Priority"), text: $priorityText).labelsHidden().textFieldStyle(.roundedBorder).frame(width: 50).multilineTextAlignment(.trailing).onSubmit(applyPriority)
+                    Button(L("Top")) { Task { await store.setPriority(name, org: row["orgUuid"].string, .first) } }.controlSize(.mini).fixedSize()
+                    Button(L("Bottom")) { Task { await store.setPriority(name, org: row["orgUuid"].string, .last) } }.controlSize(.mini).fixedSize()
                 }
                 if let live {
-                    Text("\(live.sessions) sessions\(Derived.formatSessionBuckets(live.sessionsByBucket)) · \(live.usage.totalRequests) requests" + (live.pressure.map { $0 > 0 ? " · pressure \(String(format: "%.2f", $0))/s" : "" } ?? ""))
+                    Text(L("%d sessions%@ · %d requests", live.sessions, Derived.formatSessionBuckets(live.sessionsByBucket), live.usage.totalRequests) + (live.pressure.map { $0 > 0 ? " · " + L("pressure %@/s", String(format: "%.2f", $0)) : "" } ?? ""))
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                Button("Remove…") { confirmRemove = true }.controlSize(.small)
+                Button(L("Remove…")) { confirmRemove = true }.controlSize(.small)
             }
             if expanded {
                 Divider()
                 ForEach(SettingsSchema.accountFields) { field in
                     FieldRow(field: field, value: row[field.id]) { new in
-                        Task { await store.apply(.accountField(name: name, id: row["id"].string, key: field.id, value: new, applies: field.applies), label: "\(field.label) of \(name)") }
+                        Task { await store.apply(.accountField(name: name, id: row["id"].string, key: field.id, value: new, applies: field.applies), label: L("%@ of %@", L(field.label), name)) }
                     }
                 }
                 if let uuid = row["accountUuid"].string {
                     Text("accountUuid \(uuid)" + (row["orgUuid"].string.map { " · orgUuid \($0)" } ?? "")).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
-                    Button("Copy pinned run command") {
+                    Button(L("Copy pinned run command")) {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString("TC_ACCT=\(uuid) teamclaude run", forType: .string)
-                        store.showToast(.ok, "Copied: TC_ACCT=… teamclaude run")
+                        store.showToast(.ok, L("Copied: TC_ACCT=… teamclaude run"))
                     }.controlSize(.small)
                 }
             }
@@ -108,8 +108,8 @@ struct AccountCard: View {
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
         .onAppear { priorityText = String(row["priority"].int ?? 0) }
         .onChange(of: row["priority"].int ?? 0) { _, v in priorityText = String(v) }
-        .confirmationDialog("Remove \(store.displayName(name))?", isPresented: $confirmRemove) {
-            Button("Remove", role: .destructive) { Task { await store.removeAccount(name, org: row["orgUuid"].string) } }
+        .confirmationDialog(L("Remove %@?", store.displayName(name)), isPresented: $confirmRemove) {
+            Button(L("Remove"), role: .destructive) { Task { await store.removeAccount(name, org: row["orgUuid"].string) } }
         } message: { Text(AppStore.removeAccountMessage) }
     }
 
@@ -126,22 +126,22 @@ enum AddAccountMode: String, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .oauth: return "Claude subscription — browser sign-in"
-        case .token: return "Claude subscription — paste the code"
-        case .apiKey: return "Anthropic API key"
-        case .codex: return "OpenAI Codex subscription"
-        case .importCLI: return "Import from Claude Code"
-        case .importFile: return "Import from a credentials file"
+        case .oauth: return L("Claude subscription — browser sign-in")
+        case .token: return L("Claude subscription — paste the code")
+        case .apiKey: return L("Anthropic API key")
+        case .codex: return L("OpenAI Codex subscription")
+        case .importCLI: return L("Import from Claude Code")
+        case .importFile: return L("Import from a credentials file")
         }
     }
     var help: String {
         switch self {
-        case .oauth: return "Opens your browser for the same OAuth flow Claude Code uses; the CLI waits up to two minutes for the callback."
-        case .token: return "For when the browser cannot reach this Mac: open the link the CLI prints, sign in, then paste the code or the full callback URL here."
-        case .apiKey: return "A Console API key (billed per token). The key is passed to the CLI on stdin and never appears in a command line."
-        case .codex: return "Signs in through the Codex CLI's flow on port 1455 (fails if `codex login` is already running)."
-        case .importCLI: return "Copies the credentials Claude Code is logged in with (macOS may show a Keychain prompt owned by `security`)."
-        case .importFile: return "Reads accessToken/refreshToken from a credentials JSON file."
+        case .oauth: return L("Opens your browser for the same OAuth flow Claude Code uses; the CLI waits up to two minutes for the callback.")
+        case .token: return L("For when the browser cannot reach this Mac: open the link the CLI prints, sign in, then paste the code or the full callback URL here.")
+        case .apiKey: return L("A Console API key (billed per token). The key is passed to the CLI on stdin and never appears in a command line.")
+        case .codex: return L("Signs in through the Codex CLI's flow on port 1455 (fails if `codex login` is already running).")
+        case .importCLI: return L("Copies the credentials Claude Code is logged in with (macOS may show a Keychain prompt owned by `security`).")
+        case .importFile: return L("Reads accessToken/refreshToken from a credentials JSON file.")
         }
     }
 }
@@ -168,14 +168,14 @@ struct AddAccountSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(mode.title).font(.headline)
             Text(mode.help).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack { Text("Name").frame(width: 70, alignment: .trailing); TextField("optional — defaults to the account e-mail", text: $name).textFieldStyle(.roundedBorder) }
-            if mode == .apiKey { HStack { Text("API key").frame(width: 70, alignment: .trailing); SecureField("sk-ant-api03-…", text: $secret).textFieldStyle(.roundedBorder) } }
-            if mode == .importFile { HStack { Text("File").frame(width: 70, alignment: .trailing); TextField("~/.claude/.credentials.json", text: $path).textFieldStyle(.roundedBorder) } }
+            HStack { Text(L("Name")).frame(width: 70, alignment: .trailing); TextField(L("optional — defaults to the account e-mail"), text: $name).textFieldStyle(.roundedBorder) }
+            if mode == .apiKey { HStack { Text(L("API key")).frame(width: 70, alignment: .trailing); SecureField("sk-ant-api03-…", text: $secret).textFieldStyle(.roundedBorder) } }
+            if mode == .importFile { HStack { Text(L("File")).frame(width: 70, alignment: .trailing); TextField("~/.claude/.credentials.json", text: $path).textFieldStyle(.roundedBorder) } }
             if mode == .token, running, !codeSent {
                 HStack {
-                    Text("Code").frame(width: 70, alignment: .trailing)
-                    TextField("authorization code or callback URL", text: $code).textFieldStyle(.roundedBorder).onSubmit(sendCode)
-                    Button("Send", action: sendCode).controlSize(.small).disabled(code.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Text(L("Code")).frame(width: 70, alignment: .trailing)
+                    TextField(L("authorization code or callback URL"), text: $code).textFieldStyle(.roundedBorder).onSubmit(sendCode)
+                    Button(L("Send"), action: sendCode).controlSize(.small).disabled(code.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             if !lines.isEmpty || running {
@@ -185,7 +185,7 @@ struct AddAccountSheet: View {
                             ForEach(Array(lines.enumerated()), id: \.offset) { i, line in
                                 HStack(alignment: .top, spacing: 6) {
                                     Text(line.text).font(.system(size: 11, design: .monospaced)).foregroundStyle(isErr(line) ? .orange : .primary).textSelection(.enabled)
-                                    if let url = urlIn(line.text) { Button("Open") { NSWorkspace.shared.open(url) }.controlSize(.mini) }
+                                    if let url = urlIn(line.text) { Button(L("Open")) { NSWorkspace.shared.open(url) }.controlSize(.mini) }
                                 }.id(i)
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
@@ -199,11 +199,11 @@ struct AddAccountSheet: View {
                 Text(finishedText(finished)).foregroundStyle(finished.succeeded && reloaded != false ? Level.green.color : Level.red.color).font(.system(size: 12))
             }
             HStack {
-                if running { ProgressView().controlSize(.small); Text("Running…").font(.system(size: 12)).foregroundStyle(.secondary) }
+                if running { ProgressView().controlSize(.small); Text(L("Running…")).font(.system(size: 12)).foregroundStyle(.secondary) }
                 Spacer()
-                if running { Button("Cancel") { task?.cancel() } }
-                else if finished != nil { Button("Close", action: dismiss).keyboardShortcut(.defaultAction) }
-                else { Button("Cancel", action: dismiss); Button("Start") { start() }.keyboardShortcut(.defaultAction).disabled(mode == .apiKey && secret.isEmpty) }
+                if running { Button(L("Cancel")) { task?.cancel() } }
+                else if finished != nil { Button(L("Close"), action: dismiss).keyboardShortcut(.defaultAction) }
+                else { Button(L("Cancel"), action: dismiss); Button(L("Start")) { start() }.keyboardShortcut(.defaultAction).disabled(mode == .apiKey && secret.isEmpty) }
             }
         }
         .padding(20).frame(width: 520)
@@ -212,11 +212,11 @@ struct AddAccountSheet: View {
     private func isErr(_ l: OutputLine) -> Bool { if case .err = l { return true } else { return false } }
 
     private func finishedText(_ r: CLIResult) -> String {
-        guard r.succeeded else { return "The CLI exited with \(r.exitCode)\(r.timedOut ? " (timed out)" : "")." }
+        guard r.succeeded else { return L("The CLI exited with %d%@.", r.exitCode, r.timedOut ? " " + L("(timed out)") : "") }
         switch reloaded {
-        case .some(true): return "Done — the proxy has been reloaded."
-        case .some(false): return "Saved, but the proxy did not reload — restart it or use Reload Config."
-        case .none: return "Done."
+        case .some(true): return L("Done — the proxy has been reloaded.")
+        case .some(false): return L("Saved, but the proxy did not reload — restart it or use Reload Config.")
+        case .none: return L("Done.")
         }
     }
 
@@ -266,7 +266,7 @@ struct AddAccountSheet: View {
             } catch let e as CLIError {
                 errorText = e.message
             } catch is CancellationError {
-                errorText = "Cancelled"
+                errorText = L("Cancelled")
             } catch {
                 errorText = error.localizedDescription
             }

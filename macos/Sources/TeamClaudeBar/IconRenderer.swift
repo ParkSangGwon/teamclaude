@@ -27,7 +27,7 @@ enum IconRenderer {
         case .bars: text = nil
         case .percent, .barsPercent: text = model.label
         case .barsBoth:
-            if let f = model.fiveHour, let w = model.weekly { text = "\(Derived.percentInt(f))% · \(Derived.percentInt(w))%" }
+            if let f = model.fiveHour, let w = model.weekly { text = "5h \(Derived.percentInt(f))% · 7d \(Derived.percentInt(w))%" }
             else { text = model.label }
         case .quiet: text = quiet ? nil : model.label
         }

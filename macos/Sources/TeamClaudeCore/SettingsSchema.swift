@@ -5,15 +5,15 @@ public enum SettingsSection: String, Sendable, CaseIterable, Identifiable {
     public var id: String { rawValue }
     public var title: String {
         switch self {
-        case .general: return "General"
-        case .proxy: return "Proxy & Service"
-        case .accounts: return "Accounts"
-        case .rotation: return "Rotation"
-        case .quota: return "Quota"
-        case .routing: return "Routing"
-        case .logging: return "Logging"
-        case .history: return "History"
-        case .advanced: return "Advanced"
+        case .general: return L("General")
+        case .proxy: return L("Proxy & Service")
+        case .accounts: return L("Accounts")
+        case .rotation: return L("Rotation")
+        case .quota: return L("Quota")
+        case .routing: return L("Routing")
+        case .logging: return L("Logging")
+        case .history: return L("History")
+        case .advanced: return L("Advanced")
         }
     }
 }

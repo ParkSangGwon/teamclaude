@@ -14,7 +14,7 @@ public struct CLIResult: Sendable, Equatable {
     /// The last non-empty stderr lines, which is where the CLI puts its reason.
     public var failureMessage: String {
         let lines = stderr.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        if lines.isEmpty { return timedOut ? "timed out" : "exit code \(exitCode)" }
+        if lines.isEmpty { return timedOut ? L("timed out") : L("exit code %d", Int(exitCode)) }
         return lines.suffix(3).joined(separator: " ")
     }
 }
@@ -27,10 +27,10 @@ public enum CLIError: Error, Sendable, Equatable {
 
     public var message: String {
         switch self {
-        case .notFound: return "teamclaude CLI not found — set its path in Settings → Proxy"
-        case .launch(let why): return "Could not start teamclaude: \(why)"
-        case .failed(let r): return r.timedOut ? "teamclaude timed out" : r.failureMessage
-        case .cancelled: return "cancelled"
+        case .notFound: return L("teamclaude CLI not found — set its path in Settings → Proxy")
+        case .launch(let why): return L("Could not start teamclaude: %@", why)
+        case .failed(let r): return r.timedOut ? L("teamclaude timed out") : r.failureMessage
+        case .cancelled: return L("cancelled")
         }
     }
 }

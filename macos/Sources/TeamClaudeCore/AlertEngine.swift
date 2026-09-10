@@ -118,7 +118,7 @@ public enum AlertEngine {
         // Reachability first: it does not need a snapshot.
         if inputs.reachable {
             if s.announcedDown {
-                if prefs.proxyBack { emit(Alert(kind: .proxyBack, id: "proxy.back", title: "TeamClaude proxy is back", body: "Status is updating again.", sound: false)) }
+                if prefs.proxyBack { emit(Alert(kind: .proxyBack, id: "proxy.back", title: L("TeamClaude proxy is back"), body: L("Status is updating again."), sound: false)) }
                 s.announcedDown = false
             }
             s.downStreak = 0
@@ -126,7 +126,7 @@ public enum AlertEngine {
             s.downStreak += 1
             if s.downStreak >= downStreakToAnnounce, !s.announcedDown {
                 s.announcedDown = true
-                if prefs.proxyDown { emit(Alert(kind: .proxyDown, id: "proxy.down", title: "TeamClaude proxy is not responding", body: "No answer from the proxy. Open the log or restart the service.", sound: true)) }
+                if prefs.proxyDown { emit(Alert(kind: .proxyDown, id: "proxy.down", title: L("TeamClaude proxy is not responding"), body: L("No answer from the proxy. Open the log or restart the service."), sound: true)) }
             }
         }
 
@@ -139,8 +139,8 @@ public enum AlertEngine {
         // keying on it would re-announce "at 90%" each time any one account resets.
         if let quota = inputs.quota {
             let metrics: [(String, String, Bool, String)] = [
-                ("fiveHour", "fleet.5h", prefs.fleetFiveHour, "Fleet 5-hour usage"),
-                ("weeklyShared", "fleet.7d", prefs.fleetWeekly, "Fleet weekly usage"),
+                ("fiveHour", "fleet.5h", prefs.fleetFiveHour, L("Fleet 5-hour usage")),
+                ("weeklyShared", "fleet.7d", prefs.fleetWeekly, L("Fleet weekly usage")),
             ]
             for (bucket, key, enabled, title) in metrics {
                 guard let agg = quota.aggregate[bucket], let util = agg.utilization else { continue }
@@ -151,10 +151,10 @@ public enum AlertEngine {
                         if !fired.contains(level) {
                             fired.append(level)
                             if enabled, !seeding {
-                                let reset = agg.nextResetAt.map { " · next reset in \(Derived.formatReset($0, now: inputs.now))" } ?? ""
+                                let reset = agg.nextResetAt.map { " · " + L("next reset in %@", Derived.formatReset($0, now: inputs.now)) } ?? ""
                                 // One id per metric and level: the next window's alert replaces the last instead of piling up.
-                                emit(Alert(kind: .fleetLevel, id: "\(key).\(level)", title: "\(title) at \(Derived.percentInt(util))%",
-                                           body: "\(agg.knownAccounts) accounts weighted by tier\(reset)", sound: false))
+                                emit(Alert(kind: .fleetLevel, id: "\(key).\(level)", title: L("%@ at %d%%", title, Derived.percentInt(util)),
+                                           body: L("%d accounts weighted by tier", agg.knownAccounts) + reset, sound: false))
                             }
                         }
                     } else if pct < Double(level - hysteresisPoints) {
@@ -170,8 +170,8 @@ public enum AlertEngine {
         if let prev = s.lastCurrent, let cur = current, prev != cur, !seeding, cur != inputs.appSwitchedTo {
             if prefs.rotation {
                 let reason = Derived.rotationReason(from: prev, to: cur, previous: inputs.previous, status: status, now: inputs.now)
-                emit(Alert(kind: .rotation, id: "rotate.\(prev).\(cur)", title: "Rotated: \(prev) → \(cur)",
-                           body: reason ?? "Rotation moved to \(cur).", sound: true))
+                emit(Alert(kind: .rotation, id: "rotate.\(prev).\(cur)", title: L("Rotated: %@ → %@", prev, cur),
+                           body: reason ?? L("Rotation moved to %@.", cur), sound: true))
             }
         }
         s.lastCurrent = current
@@ -179,7 +179,7 @@ public enum AlertEngine {
         // An account that needs a person.
         let errors = status.accounts.filter { $0.unavailable == "error" }.map(\.name)
         for name in errors where !s.errorAccounts.contains(name) && !seeding && prefs.accountError {
-            emit(Alert(kind: .accountError, id: "acct.error.\(name)", title: "\(name) needs a re-login", body: "The account is in an error state. Open Settings → Accounts.", sound: false))
+            emit(Alert(kind: .accountError, id: "acct.error.\(name)", title: L("%@ needs a re-login", name), body: L("The account is in an error state. Open Settings → Accounts."), sound: false))
         }
         s.errorAccounts = errors
 
@@ -190,13 +190,13 @@ public enum AlertEngine {
             if let code = a.unavailable {
                 nowUnavailable[a.name] = code
                 if before == nil, !seeding, prefs.accountLeft, code != "disabled", code != "error" {
-                    let reset = code == "quota" ? a.quota.unified5hReset.map { " · resets in \(Derived.formatReset($0, now: inputs.now))" } ?? "" : ""
-                    emit(Alert(kind: .accountLeft, id: "acct.left.\(a.name)", title: "\(a.name) left rotation",
+                    let reset = code == "quota" ? a.quota.unified5hReset.map { " · " + L("resets in %@", Derived.formatReset($0, now: inputs.now)) } ?? "" : ""
+                    emit(Alert(kind: .accountLeft, id: "acct.left.\(a.name)", title: L("%@ left rotation", a.name),
                                body: (UnavailableText.label(code) ?? code) + reset, sound: false))
                 }
             } else if let code = before, !seeding, prefs.accountBack, code != "disabled", code != "error" {
-                emit(Alert(kind: .accountBack, id: "acct.back.\(a.name)", title: "\(a.name) is back in rotation",
-                           body: code == "quota" ? "Its window reset." : "\(UnavailableText.label(code) ?? code) cleared.", sound: false))
+                emit(Alert(kind: .accountBack, id: "acct.back.\(a.name)", title: L("%@ is back in rotation", a.name),
+                           body: code == "quota" ? L("Its window reset.") : L("%@ cleared.", UnavailableText.label(code) ?? code), sound: false))
             }
         }
         s.unavailableByAccount = nowUnavailable
@@ -204,15 +204,15 @@ public enum AlertEngine {
         // The quota probe failing for an account: its bars are going stale.
         let failing = (status.probe?.accounts ?? []).filter { $0.error != nil }
         for p in failing where !s.probeErrorAccounts.contains(p.name) && !seeding && prefs.probeFailed {
-            emit(Alert(kind: .probeFailed, id: "probe.\(p.name)", title: "Quota probe failing for \(p.name)",
-                       body: p.error ?? "The probe returned an error; the account's bars stop updating until it recovers.", sound: false))
+            emit(Alert(kind: .probeFailed, id: "probe.\(p.name)", title: L("Quota probe failing for %@", p.name),
+                       body: p.error ?? L("The probe returned an error; the account's bars stop updating until it recovers."), sound: false))
         }
         s.probeErrorAccounts = failing.map(\.name)
 
         // Every account out of rotation.
         let hold = Derived.isHold(status)
         if hold, !s.allOut, !seeding, prefs.hold {
-            emit(Alert(kind: .hold, id: "hold", title: "No account can serve requests", body: Derived.holdReason(status), sound: true))
+            emit(Alert(kind: .hold, id: "hold", title: L("No account can serve requests"), body: Derived.holdReason(status), sound: true))
         }
         s.allOut = hold
 
@@ -225,7 +225,7 @@ public enum AlertEngine {
             if !s.spendSeen.contains(key) {
                 s.spendSeen.append(key)
                 if !seeding, prefs.spend {
-                    emit(Alert(kind: .spend, id: key, title: "\(a.name) is billing overage", body: "\(Derived.formatMoney(minor: used, currency: spend.currency, exponent: spend.exponent)) used this month", sound: false))
+                    emit(Alert(kind: .spend, id: key, title: L("%@ is billing overage", a.name), body: L("%@ used this month", Derived.formatMoney(minor: used, currency: spend.currency, exponent: spend.exponent)), sound: false))
                 }
             }
         }

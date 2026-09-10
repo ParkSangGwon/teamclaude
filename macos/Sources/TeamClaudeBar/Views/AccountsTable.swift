@@ -44,11 +44,11 @@ struct AccountsTable: View {
 
     private var header: some View {
         HStack(spacing: Self.gap) {
-            Text("ACCOUNT").frame(width: nameWidth, alignment: .leading)
-            Text("SES").frame(width: Self.wideCol, alignment: .leading)
-            Text("WK").frame(width: Self.wideCol, alignment: .leading)
-            if showFable { Text("F7").frame(width: Self.narrowCol, alignment: .leading) }
-            if showSonnet { Text("S7").frame(width: Self.narrowCol, alignment: .leading) }
+            Text(L("ACCOUNT")).frame(width: nameWidth, alignment: .leading)
+            Text(L("SES")).frame(width: Self.wideCol, alignment: .leading)
+            Text(L("WK")).frame(width: Self.wideCol, alignment: .leading)
+            if showFable { Text(L("F7")).frame(width: Self.narrowCol, alignment: .leading) }
+            if showSonnet { Text(L("S7")).frame(width: Self.narrowCol, alignment: .leading) }
             Spacer(minLength: 0)
         }
         .font(.system(size: 10, weight: .semibold)).tracking(0.5).foregroundStyle(.secondary)
@@ -90,15 +90,15 @@ struct AccountTableRow: View {
                     // The column headers say session/weekly; an API-key account has tokens and requests instead (the TUI relabels too).
                     let t = Derived.usedFraction(remaining: account.quota.tokensRemaining, limit: account.quota.tokensLimit)
                     let r = Derived.usedFraction(remaining: account.quota.requestsRemaining, limit: account.quota.requestsLimit)
-                    cell(t, reset: account.quota.resetsAt, window: nil, bucket: "tokens", name: "Tokens", prefix: "Tok ", width: AccountsTable.wideCol)
-                    cell(r, reset: account.quota.resetsAt, window: nil, bucket: "requests", name: "Requests", prefix: "Req ", width: AccountsTable.wideCol)
+                    cell(t, reset: account.quota.resetsAt, window: nil, bucket: "tokens", name: L("Tokens"), prefix: L("Tok "), width: AccountsTable.wideCol)
+                    cell(r, reset: account.quota.resetsAt, window: nil, bucket: "requests", name: L("Requests"), prefix: L("Req "), width: AccountsTable.wideCol)
                     if showFable { placeholder(AccountsTable.narrowCol) }
                     if showSonnet { placeholder(AccountsTable.narrowCol) }
                 } else {
-                    cell(account.quota.unified5h, reset: account.quota.unified5hReset, window: Window.fiveHour, bucket: Buckets.fiveHour, name: "Session", width: AccountsTable.wideCol)
-                    cell(account.quota.unified7d, reset: account.quota.unified7dReset, window: Window.sevenDay, bucket: Buckets.weekly, name: "Weekly", width: AccountsTable.wideCol)
-                    if showFable { family(account.quota.unified7dFable, reset: account.quota.unified7dFableReset, bucket: Buckets.fable, name: "Fable weekly") }
-                    if showSonnet { family(account.quota.unified7dSonnet, reset: account.quota.unified7dSonnetReset, bucket: Buckets.sonnet, name: "Sonnet weekly") }
+                    cell(account.quota.unified5h, reset: account.quota.unified5hReset, window: Window.fiveHour, bucket: Buckets.fiveHour, name: L("Session"), width: AccountsTable.wideCol)
+                    cell(account.quota.unified7d, reset: account.quota.unified7dReset, window: Window.sevenDay, bucket: Buckets.weekly, name: L("Weekly"), width: AccountsTable.wideCol)
+                    if showFable { family(account.quota.unified7dFable, reset: account.quota.unified7dFableReset, bucket: Buckets.fable, name: L("Fable weekly")) }
+                    if showSonnet { family(account.quota.unified7dSonnet, reset: account.quota.unified7dSonnetReset, bucket: Buckets.sonnet, name: L("Sonnet weekly")) }
                 }
                 Spacer(minLength: 0)
                 if !snapshotMode { rowMenu } else { Image(systemName: "ellipsis.circle").font(.system(size: 11)).foregroundStyle(.secondary) }
@@ -115,30 +115,30 @@ struct AccountTableRow: View {
         .padding(.vertical, 2)
         .background(isCurrent ? Color.accentColor.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(account.name)\(isCurrent ? ", current" : isNext ? ", next" : ""), \(subtitle)")
-        .alert("Priority for \(store.displayName(account.name))", isPresented: $askPriority) {
+        .accessibilityLabel("\(account.name)\(isCurrent ? ", " + L("current") : isNext ? ", " + L("next") : ""), \(subtitle)")
+        .alert(L("Priority for %@", store.displayName(account.name)), isPresented: $askPriority) {
             TextField("0", text: $priorityText)
-            Button("Set") { if let n = Int(priorityText) { Task { await store.setPriority(account.name, .number(n)) } } }
-            Button("Cancel", role: .cancel) {}
-        } message: { Text("Lower is preferred. A strictly lower value preempts a healthy current account.") }
-        .confirmationDialog("Remove \(store.displayName(account.name))?", isPresented: $confirmRemove) {
-            Button("Remove", role: .destructive) { Task { await store.removeAccount(account.name) } }
+            Button(L("Set")) { if let n = Int(priorityText) { Task { await store.setPriority(account.name, .number(n)) } } }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: { Text(L("Lower is preferred. A strictly lower value preempts a healthy current account.")) }
+        .confirmationDialog(L("Remove %@?", store.displayName(account.name)), isPresented: $confirmRemove) {
+            Button(L("Remove"), role: .destructive) { Task { await store.removeAccount(account.name) } }
         } message: { Text(AppStore.removeAccountMessage) }
     }
 
     private var rowMenu: some View {
         Menu {
-            if !isCurrent { Button("Make current") { store.switchTo(account.name) }.disabled(store.isDown || !store.switchSupported) }
-            Button(account.disabled ? "Enable" : "Disable") { Task { await store.setEnabled(account.name, account.disabled) } }
-            Button("Set priority…") { priorityText = String(account.priority); askPriority = true }
-            Button("Move to top") { Task { await store.setPriority(account.name, .first) } }
-            Button("Move to bottom") { Task { await store.setPriority(account.name, .last) } }
+            if !isCurrent { Button(L("Make current")) { store.switchTo(account.name) }.disabled(store.isDown || !store.switchSupported) }
+            Button(account.disabled ? L("Enable") : L("Disable")) { Task { await store.setEnabled(account.name, account.disabled) } }
+            Button(L("Set priority…")) { priorityText = String(account.priority); askPriority = true }
+            Button(L("Move to top")) { Task { await store.setPriority(account.name, .first) } }
+            Button(L("Move to bottom")) { Task { await store.setPriority(account.name, .last) } }
             Divider()
-            Button("Copy name") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(account.name, forType: .string) }
-            Button("Remove…", role: .destructive) { confirmRemove = true }
+            Button(L("Copy name")) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(account.name, forType: .string) }
+            Button(L("Remove…"), role: .destructive) { confirmRemove = true }
         } label: { Image(systemName: "ellipsis.circle").font(.system(size: 11)) }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .help(isCurrent ? "Actions" : "Make current, enable/disable, priority, remove")
+        .help(isCurrent ? L("Actions") : L("Make current, enable/disable, priority, remove"))
     }
 
     @ViewBuilder
@@ -156,9 +156,9 @@ struct AccountTableRow: View {
             }
         }
         .frame(width: width, alignment: .leading)
-        .help(ratio.map { "\(name) \(Derived.formatPercent($0))" + (resetLong.isEmpty ? "" : " · " + resetLong) } ?? "\(name) unknown")
+        .help(ratio.map { "\(name) \(Derived.formatPercent($0))" + (resetLong.isEmpty ? "" : " · " + resetLong) } ?? L("%@ unknown", name))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(ratio.map { "\(name) \(Derived.formatPercent($0))" + (resetLong.isEmpty ? "" : ", " + resetLong) } ?? "\(name) unknown")
+        .accessibilityLabel(ratio.map { "\(name) \(Derived.formatPercent($0))" + (resetLong.isEmpty ? "" : ", " + resetLong) } ?? L("%@ unknown", name))
     }
 
     @ViewBuilder
@@ -178,12 +178,12 @@ struct AccountTableRow: View {
         } else {
             VStack(alignment: .leading, spacing: 2) {
                 QuotaBar(ratio: 0, level: .green, elapsed: nil, cap: nil, height: 5).frame(width: AccountsTable.narrowCol - 6)
-                Text("=wk").font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
+                Text(L("=wk")).font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
             }
             .frame(width: AccountsTable.narrowCol, alignment: .leading)
-            .help("\(name) shares the weekly bucket")
+            .help(L("%@ shares the weekly bucket", name))
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(name) shares the weekly bucket")
+            .accessibilityLabel(L("%@ shares the weekly bucket", name))
         }
     }
 
@@ -198,26 +198,26 @@ struct AccountTableRow: View {
 
     private var subtitle: String {
         var parts = [Derived.tierBadge(quotaAccount?.tier)]
-        if account.disabled { parts.append("disabled") }
+        if account.disabled { parts.append(L("disabled")) }
         else if account.status == "throttled", let until = account.rateLimitedUntil {
             let r = Derived.formatReset(until, now: now)
-            parts.append(r.isEmpty ? "throttled" : "throttled \(r)")
-        } else if account.status != "active" { parts.append(account.status) }
-        if account.priority != 0 { parts.append("prio \(account.priority)") }
-        if account.sessions > 0 { parts.append("\(account.sessions) sess" + Derived.formatSessionBuckets(account.sessionsByBucket)) }
+            parts.append(r.isEmpty ? L("throttled") : L("throttled %@", r))
+        } else if account.status != "active" { parts.append(L(account.status)) }
+        if account.priority != 0 { parts.append(L("prio %d", account.priority)) }
+        if account.sessions > 0 { parts.append(L("%d sess", account.sessions) + Derived.formatSessionBuckets(account.sessionsByBucket)) }
         return parts.joined(separator: " · ")
     }
 
     /// Everything that does not fit the row: the full name, the organization, expiry pressure, the adaptive scorer's line.
     private var nameHelp: String {
         var lines = [account.name + (account.orgName.map { " · \($0)" } ?? "")]
-        if isNext { lines.append("Next: the next unrouted request goes here") }
-        if let p = account.pressure, p > 0 { lines.append("Expiry pressure \(String(format: "%.2f", p))/s") }
+        if isNext { lines.append(L("Next: the next unrouted request goes here")) }
+        if let p = account.pressure, p > 0 { lines.append(L("Expiry pressure %@/s", String(format: "%.2f", p))) }
         if let row = status.adaptive.first(where: { $0.name == account.name }) { lines.append(Derived.formatAdaptive(row)) }
         if let spend = account.quota.spend, spend.enabled {
             let used = spend.usedMinor.map { Derived.formatMoney(minor: $0, currency: spend.currency, exponent: spend.exponent) } ?? "$0.00"
             let limit = spend.limitMinor.map { " / " + Derived.formatMoney(minor: $0, currency: spend.currency, exponent: spend.exponent) } ?? ""
-            lines.append("Overage \(used)\(limit) this month")
+            lines.append(L("Overage %@ this month", used + limit))
         }
         return lines.joined(separator: "\n")
     }
