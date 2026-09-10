@@ -87,9 +87,10 @@ public struct ConfigFile: Sendable, Equatable {
 
     // MARK: - advisory lock (shared with the proxy and the CLI)
 
-    /// `<config>.lock`: created `O_EXCL` with `{"pid","at"}`, stale after 10 s or once its
+    /// `<config>.lock` beside the configured path (the proxy's `withConfigLock` puts it next to the
+    /// link, not the target): created `O_EXCL` with `{"pid","at"}`, stale after 10 s or once its
     /// holder is gone, waited for at most 2 s and then ignored — advisory, never a deadlock.
-    public var lockPath: URL { URL(fileURLWithPath: path.resolvingSymlinksInPath().path + ".lock") }
+    public var lockPath: URL { URL(fileURLWithPath: path.path + ".lock") }
     public static let lockStaleAfter: TimeInterval = 10
     public static let lockWait: TimeInterval = 2
 

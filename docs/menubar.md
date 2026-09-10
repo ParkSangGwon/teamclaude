@@ -92,9 +92,11 @@ are kept, and the proxy is reloaded. *Export diagnostics…* writes `status.json
 `quota.json`, the config with secrets removed, `launchctl print` and the app's own
 state to a folder in Downloads.
 
-Writes take the advisory lock the proxy and the CLI share, `<config>.lock`
-(created exclusively with the writer's pid, stale after ten seconds, waited for at
-most two seconds and then bypassed — it coordinates, it never blocks forever).
+Writes take the advisory lock the proxy and the CLI share from 1.1.19 on,
+`<config>.lock` beside the configured path (created exclusively with the writer's
+pid, stale after ten seconds, waited for at most two seconds and then bypassed —
+it coordinates, it never blocks forever). Older proxies ignore it; the app still
+detects their concurrent writes by re-checking the file before its rename.
 
 ## Security notes
 
