@@ -42,6 +42,8 @@ final class AppStore {
     private(set) var serviceHealth: ServiceHealth?
     var toast: Toast?
     var popoverOpen = false
+    /// Informational banners the user closed this session.
+    var dismissedNotices: Set<String> = []
     /// Bumped when an app preference changes so the icon re-renders (Preferences itself is not observable).
     var prefsVersion = 0
 

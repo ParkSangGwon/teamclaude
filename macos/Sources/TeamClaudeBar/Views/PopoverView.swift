@@ -119,8 +119,9 @@ struct PopoverView: View {
                 let target = status.effectiveDefaultTarget.map { " Requests go to \(store.displayName($0))." } ?? ""
                 out.append(Banner(kind: .warn, text: "Rotation cannot use \(store.displayName(cur.name)): \(why).\(target)"))
             }
-            if !status.hasDefaultTarget, store.status?.routes.isEmpty == false {
-                out.append(Banner(kind: .info, text: "Proxy older than 1.1.18 — routing targets are estimated from the current account."))
+            if !status.hasDefaultTarget, store.status?.routes.isEmpty == false, !store.dismissedNotices.contains("skew") {
+                out.append(Banner(kind: .info, text: "Proxy older than 1.1.18 — routing targets are estimated from the current account. `teamclaude update` clears this.",
+                                  onDismiss: { store.dismissedNotices.insert("skew") }))
             }
         }
         if !store.restartPending.isEmpty {

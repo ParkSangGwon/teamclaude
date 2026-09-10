@@ -153,6 +153,7 @@ struct Banner: View {
     var text: String
     var action: (() -> Void)? = nil
     var actionTitle: String? = nil
+    var onDismiss: (() -> Void)? = nil
 
     var color: Color {
         switch kind { case .bad: return .red; case .warn: return .orange; case .info: return .blue; case .ok: return .green }
@@ -166,6 +167,10 @@ struct Banner: View {
             Spacer(minLength: 0)
             if let action, let actionTitle {
                 Button(actionTitle, action: action).font(.system(size: 10, weight: .semibold)).buttonStyle(.plain).foregroundStyle(color)
+            }
+            if let onDismiss {
+                Button(action: onDismiss) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Hide for this session")
             }
         }
         .padding(.horizontal, 9).padding(.vertical, 7)
