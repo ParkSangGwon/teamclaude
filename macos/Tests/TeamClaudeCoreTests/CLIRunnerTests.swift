@@ -78,13 +78,65 @@ final class CLIRunnerTests: XCTestCase {
     func testCancellationKillsTheChild() async throws {
         let started = Date()
         let env = self.env
-        let task = Task { try await CLIRunner.execute(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["5"], environment: env, timeout: 30) }
-        try await Task.sleep(nanoseconds: 200_000_000)
+        let sh = self.sh
+        let ready = expectation(description: "child started")
+        let task = Task {
+            try await CLIRunner.execute(executable: sh, arguments: ["-c", "echo started; sleep 5"], environment: env, timeout: 30) { line in
+                if line == .out("started") { ready.fulfill() }
+            }
+        }
+        await fulfillment(of: [ready], timeout: 5)
         task.cancel()
         let r = try await task.value
         XCTAssertNotEqual(r.exitCode, 0)
         XCTAssertFalse(r.timedOut)
         XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+    }
+
+    func testStdinToAChildThatExitedFirstDoesNotKillUs() async throws {
+        // Larger than the pipe buffer, to a child that never reads: EPIPE must be a non-event, not SIGPIPE.
+        let big = String(repeating: "x", count: 200_000)
+        let r = try await run("exit 0", stdin: big)
+        XCTAssertEqual(r.exitCode, 0)
+        XCTAssertFalse(r.timedOut)
+        let late = try await run("sleep 0.2; exit 4", stdin: "ignored")
+        XCTAssertEqual(late.exitCode, 4)
+    }
+
+    func testStdinWriterFeedsALineAfterLaunch() async throws {
+        let writer = StdinWriter()
+        let sh = self.sh, env = self.env
+        let prompted = expectation(description: "prompt printed")
+        let task = Task {
+            try await CLIRunner.execute(executable: sh, arguments: ["-c", "echo prompt; read code; echo got:$code"], environment: env,
+                                        stdinWriter: writer, timeout: 10) { line in
+                if line == .out("prompt") { prompted.fulfill() }
+            }
+        }
+        await fulfillment(of: [prompted], timeout: 5)
+        writer.send("abc123")
+        writer.close()
+        let r = try await task.value
+        XCTAssertEqual(r.exitCode, 0)
+        XCTAssertEqual(r.stdout, "prompt\ngot:abc123\n")
+        writer.send("after close is harmless")
+    }
+
+    func testStreamedLinesStayOrderedUnderLoad() async throws {
+        let lines = Collected<OutputLine>()
+        let r = try await run("i=1; while [ $i -le 2000 ]; do echo $i; echo e$i 1>&2; i=$((i+1)); done") { lines.append($0) }
+        XCTAssertEqual(r.stdout, (1...2000).map(String.init).joined(separator: "\n") + "\n")
+        XCTAssertEqual(lines.values.compactMap { if case .out(let s) = $0 { return s } else { return nil } }, (1...2000).map(String.init))
+        XCTAssertEqual(lines.values.compactMap { if case .err(let s) = $0 { return s } else { return nil } }, (1...2000).map { "e\($0)" })
+    }
+
+    func testDrainGivesUpAtTheDeadlineWhenAGrandchildHoldsThePipe() async throws {
+        // `sleep` inherits stdout and outlives the shell: an unbounded read would wait 30 s for it.
+        let started = Date()
+        let r = try await run("echo first; sleep 30 & exit 0", timeout: 10)
+        XCTAssertEqual(r.exitCode, 0)
+        XCTAssertEqual(r.stdout, "first\n")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 8)
     }
 
     func testLaunchFailure() async {

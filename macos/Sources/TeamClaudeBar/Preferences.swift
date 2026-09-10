@@ -21,6 +21,8 @@ final class Preferences {
         static let alertState = "alertState"
         static let hidePII = "hidePII"
         static let keepRight = "menuBarKeepRight"
+        static let lastUpdateCheck = "lastUpdateCheck"
+        static let latestVersion = "latestVersion"
     }
 
     enum IconStyle: String, CaseIterable { case barsPercent, bars, percent, barsBoth, quiet }
@@ -37,6 +39,8 @@ final class Preferences {
     var hidePII: Bool { get { d.bool(forKey: Key.hidePII) } set { d.set(newValue, forKey: Key.hidePII) } }
     /// Place the item next to the system items so a full menu bar never hides it (default on).
     var keepRight: Bool { get { d.object(forKey: Key.keepRight) as? Bool ?? true } set { d.set(newValue, forKey: Key.keepRight) } }
+    var lastUpdateCheck: Date? { get { d.object(forKey: Key.lastUpdateCheck) as? Date } set { d.set(newValue, forKey: Key.lastUpdateCheck) } }
+    var cachedLatestVersion: String? { get { d.string(forKey: Key.latestVersion) } set { d.set(newValue, forKey: Key.latestVersion) } }
 
     var alertPrefs: AlertPrefs {
         get { (d.data(forKey: Key.alertPrefs).flatMap { try? JSONDecoder().decode(AlertPrefs.self, from: $0) }) ?? AlertPrefs() }

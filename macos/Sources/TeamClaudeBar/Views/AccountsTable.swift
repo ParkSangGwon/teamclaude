@@ -50,10 +50,12 @@ struct AccountsTable: View {
         HStack(spacing: Self.gap) {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Fleet total").font(.system(size: 11, weight: .bold))
-                Text("\(five.knownAccounts)/\(quota.accounts.count) · w\(Int(five.capacityWeight))").font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
-            }.frame(width: Self.nameWidth, alignment: .leading)
-            total(quota.aggregate["fiveHour"], threshold: status.switchThreshold).frame(width: Self.wideCol, alignment: .leading)
-            total(quota.aggregate["weeklyShared"], threshold: status.switchThreshold).frame(width: Self.wideCol, alignment: .leading)
+                Text("\(five.knownAccounts)/\(quota.accounts.count) · weight \(Int(five.capacityWeight))").font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .frame(width: Self.nameWidth, alignment: .leading)
+            .help("\(five.knownAccounts) of \(quota.accounts.count) accounts with a known tier; the fleet percentages are weighted by the tier weights (Max 20x = 20, Max 5x = 5, Pro = 1), which sum to \(Int(five.capacityWeight)).")
+            total(quota.aggregate["fiveHour"], threshold: status.thresholdFor(bucket: Buckets.fiveHour)).frame(width: Self.wideCol, alignment: .leading)
+            total(quota.aggregate["weeklyShared"], threshold: status.thresholdFor(bucket: Buckets.weekly)).frame(width: Self.wideCol, alignment: .leading)
             familyTotal(quota, key: "weeklyFable", source: Buckets.fable, bucket: Buckets.fable).frame(width: Self.narrowCol, alignment: .leading)
             familyTotal(quota, key: "weeklySonnet", source: Buckets.sonnet, bucket: Buckets.sonnet).frame(width: Self.narrowCol, alignment: .leading)
             Spacer(minLength: 0)
@@ -63,7 +65,7 @@ struct AccountsTable: View {
     @ViewBuilder
     private func total(_ agg: Aggregate?, threshold: Double) -> some View {
         if let agg, let u = agg.utilization {
-            let level: Level = u >= threshold ? .red : Derived.rawLevel(u)
+            let level: Level = u >= threshold ? .red : Derived.rawLevel(u, warn: store.prefs.warnLevel)
             Text("\(Derived.percentInt(u))%").font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(level.color)
         } else {
             Text("—").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
@@ -107,16 +109,17 @@ struct AccountTableRow: View {
                 .help(account.name + (account.orgName.map { " · \($0)" } ?? ""))
 
                 if account.isApiKey {
-                    let t = account.quota.tokensLimit.flatMap { l in account.quota.tokensRemaining.map { 1 - $0 / l } }
-                    let r = account.quota.requestsLimit.flatMap { l in account.quota.requestsRemaining.map { 1 - $0 / l } }
-                    cell(t, reset: account.quota.resetsAt, window: nil, bucket: "tokens", width: AccountsTable.wideCol, segments: 8)
-                    cell(r, reset: account.quota.resetsAt, window: nil, bucket: "requests", width: AccountsTable.wideCol, segments: 8)
+                    // The column headers say session/weekly; an API-key account has tokens and requests instead (the TUI relabels too).
+                    let t = Derived.usedFraction(remaining: account.quota.tokensRemaining, limit: account.quota.tokensLimit)
+                    let r = Derived.usedFraction(remaining: account.quota.requestsRemaining, limit: account.quota.requestsLimit)
+                    cell(t, reset: account.quota.resetsAt, window: nil, bucket: "tokens", name: "Tokens", prefix: "Tok ", width: AccountsTable.wideCol, segments: 8)
+                    cell(r, reset: account.quota.resetsAt, window: nil, bucket: "requests", name: "Requests", prefix: "Req ", width: AccountsTable.wideCol, segments: 8)
                     placeholder(AccountsTable.narrowCol); placeholder(AccountsTable.narrowCol)
                 } else {
-                    cell(account.quota.unified5h, reset: account.quota.unified5hReset, window: Window.fiveHour, bucket: Buckets.fiveHour, width: AccountsTable.wideCol, segments: 8)
-                    cell(account.quota.unified7d, reset: account.quota.unified7dReset, window: Window.sevenDay, bucket: Buckets.weekly, width: AccountsTable.wideCol, segments: 8)
-                    family(account.quota.unified7dFable, reset: account.quota.unified7dFableReset, bucket: Buckets.fable)
-                    family(account.quota.unified7dSonnet, reset: account.quota.unified7dSonnetReset, bucket: Buckets.sonnet)
+                    cell(account.quota.unified5h, reset: account.quota.unified5hReset, window: Window.fiveHour, bucket: Buckets.fiveHour, name: "Session", width: AccountsTable.wideCol, segments: 8)
+                    cell(account.quota.unified7d, reset: account.quota.unified7dReset, window: Window.sevenDay, bucket: Buckets.weekly, name: "Weekly", width: AccountsTable.wideCol, segments: 8)
+                    family(account.quota.unified7dFable, reset: account.quota.unified7dFableReset, bucket: Buckets.fable, name: "Fable weekly")
+                    family(account.quota.unified7dSonnet, reset: account.quota.unified7dSonnetReset, bucket: Buckets.sonnet, name: "Sonnet weekly")
                 }
                 Spacer(minLength: 0)
                 if !snapshotMode { rowMenu } else { Image(systemName: "ellipsis.circle").font(.system(size: 11)).foregroundStyle(.secondary) }
@@ -132,6 +135,8 @@ struct AccountTableRow: View {
         }
         .padding(.vertical, 2)
         .background(isCurrent ? Color.accentColor.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(account.name)\(isCurrent ? ", current" : ""), \(subtitle)")
         .alert("Priority for \(account.name)", isPresented: $askPriority) {
             TextField("0", text: $priorityText)
             Button("Set") { if let n = Int(priorityText) { Task { await store.apply(.priority(account: account.name, org: nil, value: .number(n)), label: "Priority of \(account.name)") } } }
@@ -144,7 +149,7 @@ struct AccountTableRow: View {
 
     private var rowMenu: some View {
         Menu {
-            if !isCurrent { Button("Make current") { store.switchTo(account.name) } }
+            if !isCurrent { Button("Make current") { store.switchTo(account.name) }.disabled(store.isDown || !store.switchSupported) }
             Button(account.disabled ? "Enable" : "Disable") {
                 Task { await store.apply(.enabled(account: account.name, org: nil, enabled: account.disabled), label: account.disabled ? "Enable \(account.name)" : "Disable \(account.name)") }
             }
@@ -160,46 +165,56 @@ struct AccountTableRow: View {
     }
 
     @ViewBuilder
-    private func cell(_ ratio: Double?, reset: Date?, window: TimeInterval?, bucket: String, width: CGFloat, segments: Int) -> some View {
+    private func cell(_ ratio: Double?, reset: Date?, window: TimeInterval?, bucket: String, name: String, prefix: String = "", width: CGFloat, segments: Int) -> some View {
+        let resetLong = Derived.formatResetLong(reset, style: .both, now: now)
         VStack(alignment: .leading, spacing: 2) {
             if let ratio {
                 let level = Derived.level(ratio: ratio, resetAt: reset, window: window, threshold: status.thresholdFor(bucket: bucket), now: now)
                 SegmentBar(ratio: ratio, level: level, segments: segments, width: width - 4)
-                Text(label(ratio, reset)).font(.system(size: 8.5, design: .monospaced)).foregroundStyle(level == .red ? Level.red.color : Color.secondary).lineLimit(1)
+                Text(prefix + label(ratio, reset)).font(.system(size: 8.5, design: .monospaced)).foregroundStyle(level == .red ? Level.red.color : Color.secondary).lineLimit(1)
             } else {
                 SegmentBar(ratio: 0, level: .green, segments: segments, width: width - 4)
-                Text("—").font(.system(size: 8.5, design: .monospaced)).foregroundStyle(.tertiary)
+                Text(prefix + "—").font(.system(size: 8.5, design: .monospaced)).foregroundStyle(.tertiary)
             }
         }
         .frame(width: width, alignment: .leading)
-        .help(ratio.map { "\(Derived.formatPercent($0))" + (Derived.formatResetLong(reset, style: .both, now: now).isEmpty ? "" : " · " + Derived.formatResetLong(reset, style: .both, now: now)) } ?? "unknown")
+        .help(ratio.map { "\(name) \(Derived.formatPercent($0))" + (resetLong.isEmpty ? "" : " · " + resetLong) } ?? "\(name) unknown")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ratio.map { "\(name) \(Derived.formatPercent($0))" + (resetLong.isEmpty ? "" : ", " + resetLong) } ?? "\(name) unknown")
     }
 
     @ViewBuilder
-    private func family(_ ratio: Double?, reset: Date?, bucket: String) -> some View {
+    private func family(_ ratio: Double?, reset: Date?, bucket: String, name: String) -> some View {
         if let ratio {
             let level = Derived.level(ratio: ratio, resetAt: reset, window: Window.sevenDay, threshold: status.thresholdFor(bucket: bucket), now: now)
+            let resetLong = Derived.formatResetLong(reset, style: .both, now: now)
             VStack(alignment: .leading, spacing: 2) {
                 SegmentBar(ratio: ratio, level: level, segments: 6, width: AccountsTable.narrowCol - 4)
                 Text("\(Derived.percentInt(ratio))%").font(.system(size: 8.5, design: .monospaced)).foregroundStyle(level == .red ? Level.red.color : Color.secondary)
             }
             .frame(width: AccountsTable.narrowCol, alignment: .leading)
-            .help("\(Derived.formatPercent(ratio)) · \(Derived.formatResetLong(reset, style: .both, now: now))")
+            .help("\(name) \(Derived.formatPercent(ratio)) · \(resetLong)")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(name) \(Derived.formatPercent(ratio)), \(resetLong)")
         } else {
             VStack(alignment: .leading, spacing: 2) {
                 SegmentBar(ratio: 0, level: .green, segments: 6, width: AccountsTable.narrowCol - 4)
                 Text("=wk").font(.system(size: 8.5, design: .monospaced)).foregroundStyle(.tertiary)
-            }.frame(width: AccountsTable.narrowCol, alignment: .leading).help("Shares the weekly bucket")
+            }
+            .frame(width: AccountsTable.narrowCol, alignment: .leading)
+            .help("\(name) shares the weekly bucket")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(name) shares the weekly bucket")
         }
     }
 
     private func placeholder(_ width: CGFloat) -> some View {
-        Text("—").font(.system(size: 8.5, design: .monospaced)).foregroundStyle(.tertiary).frame(width: width, alignment: .leading)
+        Text("—").font(.system(size: 8.5, design: .monospaced)).foregroundStyle(.tertiary).frame(width: width, alignment: .leading).accessibilityHidden(true)
     }
 
     private func label(_ ratio: Double, _ reset: Date?) -> String {
         let r = Derived.formatReset(reset, now: now)
-        return r.isEmpty ? "\(Derived.percentInt(ratio))%" : "\(Derived.percentInt(ratio))·\(r)"
+        return r.isEmpty ? "\(Derived.percentInt(ratio))%" : "\(Derived.percentInt(ratio))%·\(r)"
     }
 
     private var subtitle: String {

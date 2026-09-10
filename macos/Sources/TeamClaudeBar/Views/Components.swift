@@ -38,6 +38,39 @@ extension Level {
     var color: Color { Color(nsColor: LevelColors.nsColor(for: self)) }
 }
 
+extension Color {
+    /// The colour names a route can carry in the config (the TUI's palette).
+    static let routeNames = ["red", "green", "yellow", "blue", "magenta", "cyan"]
+
+    static func route(_ name: String?) -> Color {
+        switch name {
+        case "red": return .red
+        case "green": return .green
+        case "yellow": return .yellow
+        case "blue": return .blue
+        case "magenta": return .purple
+        case "cyan": return .cyan
+        default: return .secondary.opacity(0.5)
+        }
+    }
+}
+
+/// A titled settings group: the same box every pane draws around a cluster of controls.
+struct TitledGroup<Content: View>: View {
+    var title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 13, weight: .semibold))
+            content
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
 struct SectionHeader: View {
     var title: String
     var trailing: String?
@@ -144,26 +177,6 @@ struct UsageRow: View {
 
     func level(_ ratio: Double) -> Level {
         Derived.level(ratio: ratio, resetAt: resetAt, window: window, threshold: threshold, now: now)
-    }
-}
-
-struct MiniBar: View {
-    var label: String
-    var ratio: Double?
-    var level: Level
-    var reset: String?
-    var body: some View {
-        HStack(spacing: 3) {
-            Text(label).font(.system(size: 9)).foregroundStyle(.secondary).fixedSize()
-            ZStack(alignment: .leading) {
-                Capsule().fill(.primary.opacity(0.12))
-                if let ratio { Capsule().fill(level.color).frame(width: max(ratio > 0 ? 1 : 0, 32 * min(1, max(0, ratio)))) }
-            }.frame(width: 32, height: 3)
-            if let reset {
-                Text(reset.isEmpty ? "—" : reset).font(.system(size: 9)).monospacedDigit().foregroundStyle(level == .red ? .red : .secondary).fixedSize()
-            }
-        }
-        .help(ratio.map { "\(label) \(Derived.formatPercent($0))" + (reset.map { r in r.isEmpty ? "" : " · resets in \(r)" } ?? "") } ?? "")
     }
 }
 

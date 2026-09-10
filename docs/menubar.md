@@ -15,9 +15,10 @@ of the npm package.
 - macOS 14 (Sonoma) or newer.
 - A running proxy: `teamclaude service install`, or `teamclaude server` in a
   terminal.
-- The CLI reachable in one of these ways, checked in this order: the LaunchAgent's
-  own `node` + entry path (`~/Library/LaunchAgents/com.karpeleslab.teamclaude.plist`),
-  `teamclaude` on the login shell's PATH, or a path set in Settings → Proxy.
+- The CLI reachable in one of these ways, checked in this order: a path set in
+  Settings → Proxy, the LaunchAgent's own `node` + entry path
+  (`~/Library/LaunchAgents/com.karpeleslab.teamclaude.plist`), then `teamclaude`
+  on the login shell's PATH.
 - To build: Xcode 16 or newer (Swift 6).
 
 ## Build and install
@@ -54,9 +55,11 @@ quit it and let the agent take over.
 
 ## Security notes
 
-The app reads `proxy.port` and `proxy.apiKey` from the config and sends the key on
-every request, so it works with `proxy.trustLoopback: false`. It never reads or
-rewrites account tokens: an edit touches one key and writes the file the way the
-proxy does (temp file, `fsync`, rename, mode `0600`). Nothing is copied anywhere
-else; "Open Dashboard" puts the proxy key on the clipboard because the dashboard
-page asks for it once.
+The app reads `proxy.port`, `proxy.host` and `proxy.apiKey` from the config and
+sends the key on every request, so it works with `proxy.trustLoopback: false`. An
+edit reads the whole file, changes one key and writes it back the way the proxy
+does (temp file, `fsync`, rename, mode `0600`); token values pass through
+unchanged and the app never edits them, nor does it write them anywhere else.
+"Open Dashboard" puts the proxy key on the clipboard because the dashboard page
+asks for it once; the item is marked concealed and transient so clipboard
+managers skip it and Universal Clipboard does not sync it.

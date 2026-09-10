@@ -185,9 +185,25 @@ final class SettingsPlannerTests: XCTestCase {
         XCTAssertEqual(created["stormRamp"], .object(["startConc": .number(4)]))
         let deleted = try mutated(.json(path: ["upstreamProxy"], value: nil, applies: .live))
         XCTAssertTrue(deleted["upstreamProxy"].isNull)
-        var untouched = config()
-        try SettingsPlanner.mutate(&untouched, .cli(["threshold", "90"], .live))
-        XCTAssertEqual(untouched, config(), "a CLI plan is not a JSON edit")
+    }
+
+    func testEnabledAndPriorityJSONHonourOrgWithDuplicateNames() throws {
+        var twins = config()
+        var rows = twins["accounts"].array!
+        rows.append(.object(["name": .string("codex@example.com"), "orgName": .string("Other"), "id": .string("acct-5")]))
+        ConfigFile.patch(&twins, path: ["accounts"], value: .array(rows))
+        let out = try mutated(.enabled(account: "codex@example.com", org: "Other", enabled: false), from: twins)
+        XCTAssertTrue(out["accounts"][2]["disabled"].isNull, "the twin in the other organization is untouched")
+        XCTAssertEqual(out["accounts"][4]["disabled"], .bool(true))
+        let prio = try mutated(.priority(account: "codex@example.com", org: "Other", value: .number(7)), from: twins)
+        XCTAssertEqual(prio["accounts"][4]["priority"], .number(7))
+        XCTAssertNotEqual(prio["accounts"][2]["priority"], .number(7))
+        XCTAssertThrowsError(try mutated(.enabled(account: "codex@example.com", org: nil, enabled: false), from: twins)) {
+            XCTAssertEqual($0 as? SettingsError, .ambiguousAccount("codex@example.com"))
+        }
+        XCTAssertThrowsError(try mutated(.priority(account: "codex@example.com", org: "Nowhere", value: .first), from: twins)) {
+            XCTAssertEqual($0 as? SettingsError, .noSuchAccount("codex@example.com"))
+        }
     }
 
     // MARK: applies

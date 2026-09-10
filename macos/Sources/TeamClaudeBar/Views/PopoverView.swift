@@ -13,9 +13,11 @@ struct PopoverView: View {
                 header(now: now)
                 Divider()
                 banners
-                if let status = store.status {
+                if let status = store.status, status.accounts.isEmpty {
+                    emptyState
+                } else if let status = store.status {
                     if let current = status.current { currentCard(current, status: status, now: now) }
-                    if store.quotaSupported, let quota = store.quota { fleetCard(quota, status: status, now: now) }
+                    if let quota = store.freshQuota { fleetCard(quota, status: status, now: now) }
                     let rows = Derived.routeRows(status)
                     if !rows.isEmpty { routing(rows, status: status) }
                     accounts(status, now: now)
@@ -30,6 +32,17 @@ struct PopoverView: View {
             .frame(width: 300, alignment: .leading)
         }
         .frame(width: 300, alignment: .leading)
+    }
+
+    /// A reachable proxy with nothing to serve: the one line that tells a new install what to do next.
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("No accounts yet — add a Claude subscription or an API key.").font(.system(size: 12))
+            Button("Open Accounts…") {
+                NSApp.sendAction(#selector(AppDelegate.showAccountsSettings), to: nil, from: nil)
+            }.controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: header
@@ -81,40 +94,49 @@ struct PopoverView: View {
         }
         .menuStyle(.borderlessButton).menuIndicator(.visible)
         .frame(maxWidth: 200, alignment: .leading)
-        .help("Switch the current account")
+        .disabled(store.isDown || !store.switchSupported)
+        .help(store.isDown ? "The proxy is not reachable" : store.switchSupported ? "Switch the current account" : "This proxy version cannot switch accounts")
     }
 
+    /// Freshness first: it is the part that changes, and the part a 300 pt line used to cut off.
     private func subline(now: Date) -> String {
-        var parts = ["Proxy \(store.endpoint.label)"]
-        if let n = store.status?.accounts.count { parts.append("\(n) account\(n == 1 ? "" : "s")") }
+        var parts: [String] = []
         if let t = store.lastSuccessAt { parts.append("updated \(Derived.formatDuration(now.timeIntervalSince(t))) ago") }
+        if let n = store.status?.accounts.count { parts.append("\(n) account\(n == 1 ? "" : "s")") }
+        parts.append(store.endpoint.label)
         if let up = store.status?.server?.uptimeSeconds { parts.append("up \(Derived.formatDuration(TimeInterval(up)))") }
         return parts.joined(separator: " · ")
     }
 
     // MARK: banners
 
+    /// At most three, worst first, and a banner with a button is never the one dropped.
     @ViewBuilder
     private var banners: some View {
         let items = bannerItems
         if !items.isEmpty {
             VStack(spacing: 6) {
                 ForEach(Array(items.prefix(3).enumerated()), id: \.offset) { _, b in b }
+                if items.count > 3 {
+                    Text("+\(items.count - 3) more").font(.system(size: 10)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
         }
     }
 
     private var bannerItems: [Banner] {
         var out: [Banner] = []
+        func rank(_ b: Banner) -> Int {
+            let severity = b.kind == .bad ? 0 : b.kind == .warn ? 1 : b.kind == .ok ? 2 : 3
+            return severity * 2 + (b.action == nil ? 1 : 0)
+        }
         if case .down(let since, let error) = store.connection {
             out.append(Banner(kind: .bad, text: "\(error.message) — showing data from \(Derived.formatDuration(Date().timeIntervalSince(since))) ago", action: { store.refreshNow() }, actionTitle: "Retry"))
         }
         if let status = store.status {
             for p in Derived.problems(status) { out.append(Banner(kind: p.severity == .bad ? .bad : .warn, text: p.text)) }
             if Derived.isHold(status) {
-                let stalled = status.accounts.filter { $0.unavailable == "quota" || $0.unavailable == "throttled" }
-                let why = stalled.count == status.accounts.count ? "every account is over its quota threshold or in a rate-limit hold" : "every account is out of rotation"
-                out.append(Banner(kind: .bad, text: "No account can serve — \(why)."))
+                out.append(Banner(kind: .bad, text: "No account can serve — \(Derived.holdReason(status))."))
             } else if let cur = status.current, let why = UnavailableText.label(cur.unavailable) {
                 let target = status.effectiveDefaultTarget.map { " Requests go to \(store.displayName($0))." } ?? ""
                 out.append(Banner(kind: .warn, text: "Rotation cannot use \(store.displayName(cur.name)): \(why).\(target)"))
@@ -128,10 +150,11 @@ struct PopoverView: View {
                                   onDismiss: { store.dismissedNotices.insert("skew") }))
             }
         }
-        if !store.restartPending.isEmpty {
-            out.append(Banner(kind: .warn, text: "\(store.restartPending.count) change\(store.restartPending.count == 1 ? "" : "s") need a proxy restart (\(store.restartPending.sorted().joined(separator: ", ")))",
-                              action: { Task { await store.restartService() } }, actionTitle: "Restart"))
+        if let text = store.restartPendingText {
+            out.append(Banner(kind: .warn, text: text, action: { Task { await store.restartService() } }, actionTitle: "Restart"))
         }
+        // Stable sort: severity, then actionable first; the toast always leads because it answers what the user just did.
+        out = out.enumerated().sorted { a, b in rank(a.element) != rank(b.element) ? rank(a.element) < rank(b.element) : a.offset < b.offset }.map(\.element)
         if let toast = store.toast {
             out.insert(Banner(kind: toast.kind == .error ? .bad : toast.kind == .warn ? .warn : toast.kind == .ok ? .ok : .info, text: toast.text), at: 0)
         }
@@ -147,8 +170,8 @@ struct PopoverView: View {
             SectionHeader(title: "Current account", trailing: [Derived.tierBadge(tier), a.priority != 0 ? "prio \(a.priority)" : nil].compactMap { $0 }.joined(separator: " · "))
             Card {
                 if a.isApiKey {
-                    let tokens = a.quota.tokensLimit.flatMap { limit in a.quota.tokensRemaining.map { 1 - $0 / limit } }
-                    let requests = a.quota.requestsLimit.flatMap { limit in a.quota.requestsRemaining.map { 1 - $0 / limit } }
+                    let tokens = Derived.usedFraction(remaining: a.quota.tokensRemaining, limit: a.quota.tokensLimit)
+                    let requests = Derived.usedFraction(remaining: a.quota.requestsRemaining, limit: a.quota.requestsLimit)
                     UsageRow(title: "Tokens", subtitle: a.quota.tokensLimit.map { "of \(Int($0))" }, tag: nil, ratio: tokens, resetAt: a.quota.resetsAt, window: nil, threshold: status.thresholdFor(bucket: "tokens"), cap: nil, resetStyle: store.prefs.resetStyle, now: now)
                     UsageRow(title: "Requests", subtitle: a.quota.requestsLimit.map { "of \(Int($0))" }, tag: nil, ratio: requests, resetAt: a.quota.resetsAt, window: nil, threshold: status.thresholdFor(bucket: "requests"), cap: nil, resetStyle: store.prefs.resetStyle, now: now)
                 } else if let backend = a.quota.backend {
@@ -195,8 +218,8 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 6) {
             SectionHeader(title: "Fleet", trailing: "weighted by tier · \(known)/\(quota.accounts.count) known" + (quota.unknownTiers.isEmpty ? "" : " · \(quota.unknownTiers.count) tier unknown"))
             Card {
-                fleetRow("5-hour", quota.aggregate["fiveHour"], threshold: status.switchThreshold)
-                fleetRow("Weekly", quota.aggregate["weeklyShared"], threshold: status.switchThreshold)
+                fleetRow("Session", quota.aggregate["fiveHour"], threshold: status.thresholdFor(bucket: Buckets.fiveHour))
+                fleetRow("Weekly", quota.aggregate["weeklyShared"], threshold: status.thresholdFor(bucket: Buckets.weekly))
                 if quota.accounts.contains(where: { $0.buckets["weeklyFable"]?.source == Buckets.fable }) {
                     fleetRow("Fable", quota.aggregate["weeklyFable"], threshold: status.thresholdFor(bucket: Buckets.fable))
                 }
@@ -213,7 +236,7 @@ struct PopoverView: View {
     @ViewBuilder
     private func fleetRow(_ label: String, _ agg: Aggregate?, threshold: Double) -> some View {
         if let agg, let u = agg.utilization {
-            let level: Level = u >= threshold ? .red : Derived.rawLevel(u)
+            let level: Level = u >= threshold ? .red : Derived.rawLevel(u, warn: store.prefs.warnLevel)
             HStack(spacing: 10) {
                 Text(label).font(.system(size: 11)).frame(width: 56, alignment: .leading)
                 QuotaBar(ratio: u, level: level, elapsed: nil, cap: nil)
@@ -247,7 +270,7 @@ struct PopoverView: View {
             SectionHeader(title: "Routing")
             ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
                 HStack(spacing: 6) {
-                    Circle().fill(routeColor(r.color)).frame(width: 6, height: 6)
+                    Circle().fill(Color.route(r.color)).frame(width: 6, height: 6)
                     Text(r.label).font(.system(size: 11))
                     Text("→").foregroundStyle(.secondary).font(.system(size: 11))
                     Text(r.blocked ? "blocked" : r.target.map(store.compactName) ?? "—").font(.system(size: 11)).foregroundStyle(r.blocked ? .red : .primary).lineLimit(1)
@@ -273,25 +296,13 @@ struct PopoverView: View {
         }
     }
 
-    private func routeColor(_ name: String?) -> Color {
-        switch name {
-        case "red": return .red
-        case "green": return .green
-        case "yellow": return .yellow
-        case "blue": return .blue
-        case "magenta": return .purple
-        case "cyan": return .cyan
-        default: return .secondary.opacity(0.5)
-        }
-    }
-
     // MARK: accounts (Ops-Board style table)
 
     @ViewBuilder
     private func accounts(_ status: StatusSnapshot, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             SectionHeader(title: "Accounts", trailing: status.sessions.map(Derived.formatSessions))
-            AccountsTable(status: status, quota: store.quotaSupported ? store.quota : nil, now: now)
+            AccountsTable(status: status, quota: store.freshQuota, now: now)
         }
     }
 

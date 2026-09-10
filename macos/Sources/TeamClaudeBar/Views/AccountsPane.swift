@@ -154,8 +154,12 @@ struct AddAccountSheet: View {
     @State private var lines: [OutputLine] = []
     @State private var running = false
     @State private var finished: CLIResult?
+    @State private var reloaded: Bool?
     @State private var task: Task<Void, Never>?
     @State private var errorText: String?
+    /// Paste-code login: the CLI prints its URL first and only then reads the code, so stdin stays open until it is sent.
+    @State private var stdinWriter: StdinWriter?
+    @State private var codeSent = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -164,8 +168,12 @@ struct AddAccountSheet: View {
             HStack { Text("Name").frame(width: 70, alignment: .trailing); TextField("optional — defaults to the account e-mail", text: $name).textFieldStyle(.roundedBorder) }
             if mode == .apiKey { HStack { Text("API key").frame(width: 70, alignment: .trailing); SecureField("sk-ant-api03-…", text: $secret).textFieldStyle(.roundedBorder) } }
             if mode == .importFile { HStack { Text("File").frame(width: 70, alignment: .trailing); TextField("~/.claude/.credentials.json", text: $path).textFieldStyle(.roundedBorder) } }
-            if mode == .token, running {
-                HStack { Text("Code").frame(width: 70, alignment: .trailing); TextField("authorization code or callback URL", text: $code).textFieldStyle(.roundedBorder).onSubmit { /* stdin is fed at start; see note */ } }
+            if mode == .token, running, !codeSent {
+                HStack {
+                    Text("Code").frame(width: 70, alignment: .trailing)
+                    TextField("authorization code or callback URL", text: $code).textFieldStyle(.roundedBorder).onSubmit(sendCode)
+                    Button("Send", action: sendCode).controlSize(.small).disabled(code.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
             if !lines.isEmpty || running {
                 ScrollViewReader { proxy in
@@ -185,7 +193,7 @@ struct AddAccountSheet: View {
             }
             if let errorText { Text(errorText).foregroundStyle(.red).font(.system(size: 12)) }
             if let finished {
-                Text(finished.succeeded ? "Done — the proxy has been reloaded." : "The CLI exited with \(finished.exitCode)\(finished.timedOut ? " (timed out)" : "").").foregroundStyle(finished.succeeded ? .green : .red).font(.system(size: 12))
+                Text(finishedText(finished)).foregroundStyle(finished.succeeded && reloaded != false ? Level.green.color : Level.red.color).font(.system(size: 12))
             }
             HStack {
                 if running { ProgressView().controlSize(.small); Text("Running…").font(.system(size: 12)).foregroundStyle(.secondary) }
@@ -200,6 +208,23 @@ struct AddAccountSheet: View {
 
     private func isErr(_ l: OutputLine) -> Bool { if case .err = l { return true } else { return false } }
 
+    private func finishedText(_ r: CLIResult) -> String {
+        guard r.succeeded else { return "The CLI exited with \(r.exitCode)\(r.timedOut ? " (timed out)" : "")." }
+        switch reloaded {
+        case .some(true): return "Done — the proxy has been reloaded."
+        case .some(false): return "Saved, but the proxy did not reload — restart it or use Reload Config."
+        case .none: return "Done."
+        }
+    }
+
+    private func sendCode() {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let stdinWriter else { return }
+        stdinWriter.send(trimmed)
+        stdinWriter.close()
+        codeSent = true
+    }
+
     private func urlIn(_ text: String) -> URL? {
         guard let range = text.range(of: "https://") else { return nil }
         let tail = text[range.lowerBound...].split(separator: " ").first.map(String.init) ?? ""
@@ -209,27 +234,29 @@ struct AddAccountSheet: View {
     private func start() {
         var args: [String]
         var stdin: String? = nil
+        var writer: StdinWriter? = nil
         var timeout: TimeInterval = 150
         switch mode {
         case .oauth: args = ["login", "--oauth"]
-        case .token: args = ["login", "--token"]; stdin = code.isEmpty ? nil : code; timeout = 300
+        case .token: args = ["login", "--token"]; writer = StdinWriter(); timeout = 300
         case .apiKey: args = ["login", "--api"]; stdin = secret; timeout = 30
         case .codex: args = ["login", "--codex", "--no-browser"]
         case .importCLI: args = ["import"]; timeout = 90
         case .importFile: args = ["import", "--from", (path as NSString).expandingTildeInPath]; timeout = 90
         }
         if !name.isEmpty { args += ["--name", name] }
-        running = true; lines = []; finished = nil; errorText = nil
+        running = true; lines = []; finished = nil; reloaded = nil; errorText = nil; codeSent = false
+        stdinWriter = writer
         let mode = self.mode
         task = Task {
             do {
-                let r = try await store.runCLI(args, stdin: stdin, timeout: timeout) { line in
+                let r = try await store.runCLI(args, stdin: stdin, stdinWriter: writer, timeout: timeout) { line in
                     Task { @MainActor in lines.append(line) }
                 }
                 finished = r
                 if r.succeeded {
                     // login --api and remove do not notify the server themselves.
-                    store.reloadConfig()
+                    reloaded = await store.reloadConfig()
                     store.loadConfigRoot()
                     if mode == .apiKey { secret = "" }
                 }
@@ -241,6 +268,7 @@ struct AddAccountSheet: View {
                 errorText = error.localizedDescription
             }
             running = false
+            stdinWriter = nil
         }
     }
 }

@@ -18,7 +18,7 @@ struct RoutingPane: View {
             ForEach(Array(routes.enumerated()), id: \.offset) { _, r in
                 let live = store.status?.routes.first { $0.name == r["name"].string }
                 HStack(alignment: .top) {
-                    Circle().fill(routeColor(r["color"].string)).frame(width: 8, height: 8).padding(.top, 5)
+                    Circle().fill(Color.route(r["color"].string)).frame(width: 8, height: 8).padding(.top, 5)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
                             Text(r["name"].string ?? "?").font(.system(size: 13, weight: .semibold))
@@ -49,9 +49,6 @@ struct RoutingPane: View {
         }
     }
 
-    private func routeColor(_ name: String?) -> Color {
-        switch name { case "red": return .red; case "green": return .green; case "yellow": return .yellow; case "blue": return .blue; case "magenta": return .purple; case "cyan": return .cyan; default: return .secondary.opacity(0.5) }
-    }
 }
 
 struct RouteDraft: Identifiable {
@@ -96,7 +93,7 @@ struct RouteSheet: View {
                 }
             }
             HStack { Text("Bucket").frame(width: 80, alignment: .trailing); Picker("", selection: $draft.bucket) { Text("auto (by model family)").tag(""); Text("unified7d (shared weekly)").tag("unified7d"); Text("unified7dFable").tag("unified7dFable"); Text("unified7dSonnet").tag("unified7dSonnet") }.labelsHidden() }
-            HStack { Text("Color").frame(width: 80, alignment: .trailing); Picker("", selection: $draft.color) { Text("default").tag(""); ForEach(["red", "green", "yellow", "blue", "magenta", "cyan"], id: \.self) { Text($0).tag($0) } }.labelsHidden() }
+            HStack { Text("Color").frame(width: 80, alignment: .trailing); Picker("", selection: $draft.color) { Text("default").tag(""); ForEach(Color.routeNames, id: \.self) { Text($0).tag($0) } }.labelsHidden() }
             if let error { Text(error).foregroundStyle(.red).font(.system(size: 11)) }
             HStack { Spacer(); Button("Cancel", action: dismiss); Button("Save") { save() }.keyboardShortcut(.defaultAction) }
         }

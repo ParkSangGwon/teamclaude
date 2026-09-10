@@ -23,10 +23,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// macOS remembers a status item's slot under this key (distance from the
     /// right edge, in points). A new item otherwise lands at the far left of the
     /// status area, which a full menu bar hides behind the notch or an overflow
-    /// chevron. A small value keeps it next to the system items.
-    static func applyPreferredPosition(keepRight: Bool) {
+    /// chevron. A small value keeps it next to the system items. Only seeded
+    /// while no position is saved (or on demand), so a slot the user dragged the
+    /// item to survives a relaunch.
+    static func applyPreferredPosition(keepRight: Bool, force: Bool = false) {
         guard keepRight else { return }
-        UserDefaults.standard.set(30, forKey: "NSStatusItem Preferred Position \(autosaveName)")
+        let key = "NSStatusItem Preferred Position \(autosaveName)"
+        guard force || UserDefaults.standard.object(forKey: key) == nil else { return }
+        UserDefaults.standard.set(30, forKey: key)
         UserDefaults.standard.set(true, forKey: "NSStatusItem Visible \(autosaveName)")
     }
 
@@ -99,6 +103,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         NSStatusBar.system.removeStatusItem(item)
     }
 
+    /// "Reposition now": re-seed the slot even though a position is saved.
+    static func reseedPosition() { applyPreferredPosition(keepRight: true, force: true) }
+
     func togglePopover() {
         if popover.isShown { closePopover() } else { showPopover() }
     }
@@ -141,15 +148,18 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         menu.addItem(head)
         if let status = store.status, !status.accounts.isEmpty {
             let switchMenu = NSMenu()
+            let canSwitch = !store.isDown && store.switchSupported
             for a in status.accountsByPriority {
                 var title = store.displayName(a.name)
                 if let why = UnavailableText.label(a.unavailable) { title += " · \(why)" }
-                let mi = NSMenuItem(title: title, action: #selector(switchAccount(_:)), keyEquivalent: "")
+                let mi = NSMenuItem(title: title, action: canSwitch ? #selector(switchAccount(_:)) : nil, keyEquivalent: "")
                 mi.target = self
                 mi.representedObject = a.name
                 mi.state = a.name == current ? .on : .off
+                mi.isEnabled = canSwitch
                 switchMenu.addItem(mi)
             }
+            switchMenu.autoenablesItems = false
             let switchItem = NSMenuItem(title: "Switch To", action: nil, keyEquivalent: "")
             switchItem.submenu = switchMenu
             menu.addItem(switchItem)
@@ -158,8 +168,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         menu.addItem(withTitle: "Refresh", action: #selector(refresh), keyEquivalent: "r").target = self
         menu.addItem(withTitle: "Reload Config", action: #selector(reload), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboard), keyEquivalent: "d").target = self
+        menu.addItem(withTitle: "Attach in Terminal", action: #selector(attach), keyEquivalent: "t").target = self
         menu.addItem(withTitle: "Open Proxy Log", action: #selector(openLog), keyEquivalent: "").target = self
         menu.addItem(.separator())
+        let paused = store.prefs.alertPrefs.isPaused(at: Date())
+        menu.addItem(withTitle: paused ? "Resume Notifications" : "Pause Notifications for 1 Hour", action: #selector(togglePause), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit TeamClaude Bar", action: #selector(quit), keyEquivalent: "q").target = self
@@ -172,9 +185,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         if let name = sender.representedObject as? String { store.switchTo(name) }
     }
     @objc private func refresh() { store.refreshNow() }
-    @objc private func reload() { store.reloadConfig() }
+    @objc private func reload() { Task { await store.reloadConfig() } }
     @objc private func openDashboard() { Actions.openDashboard(store) }
+    @objc private func attach() { Actions.attachInTerminal(store) }
     @objc private func openLog() { NSWorkspace.shared.open(ProxyLocator.logPath()) }
+    @objc private func togglePause() {
+        var p = store.prefs.alertPrefs
+        p.pausedUntil = p.isPaused(at: Date()) ? nil : Date().addingTimeInterval(3600)
+        store.prefs.alertPrefs = p
+    }
     @objc private func settings() { openSettings() }
     @objc private func quit() { NSApp.terminate(nil) }
 }
@@ -208,14 +227,22 @@ final class PopoverContainerController: NSViewController {
 }
 
 enum Actions {
-    /// The dashboard asks for the key on first open even on loopback, so put it on the pasteboard first.
+    /// The dashboard asks for the key on first open even on loopback, so put it on the pasteboard first —
+    /// marked concealed and transient so clipboard managers skip it and Handoff does not sync it.
     @MainActor static func openDashboard(_ store: AppStore) {
         if let key = store.endpoint.apiKey, !key.isEmpty {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(key, forType: .string)
+            copySecret(key)
             store.showToast(.info, "Proxy key copied — paste it if the dashboard asks")
         }
         NSWorkspace.shared.open(store.endpoint.dashboardURL)
+    }
+
+    static func copySecret(_ value: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(value, forType: .string)
+        pb.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+        pb.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
     }
 
     /// Open `teamclaude attach` in the default terminal through a .command file (no Automation permission needed).

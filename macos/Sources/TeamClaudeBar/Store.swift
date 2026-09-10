@@ -22,10 +22,10 @@ struct Toast: Equatable {
 final class AppStore {
     private(set) var status: StatusSnapshot?
     private(set) var quota: QuotaSnapshot?
+    private(set) var quotaAt: Date?
     private(set) var previousStatus: StatusSnapshot?
     private(set) var connection: Connection = .starting
     private(set) var lastSuccessAt: Date?
-    private(set) var lastAttemptAt: Date?
     private(set) var quotaSupported = true
     private(set) var switchSupported = true
     private(set) var endpoint: ProxyEndpoint
@@ -41,7 +41,8 @@ final class AppStore {
     private(set) var serviceDiagnosis: ServiceDiagnosis?
     private(set) var serviceHealth: ServiceHealth?
     var toast: Toast?
-    var popoverOpen = false
+    /// The loop switches to the fast cadence at once, not when the closed-interval sleep ends.
+    var popoverOpen = false { didSet { if popoverOpen != oldValue { rescheduleLoop() } } }
     /// Informational banners the user closed this session.
     var dismissedNotices: Set<String> = []
     private(set) var latestVersion: String?
@@ -49,46 +50,60 @@ final class AppStore {
     private(set) var updateNote: String?
     /// Bumped when an app preference changes so the icon re-renders (Preferences itself is not observable).
     var prefsVersion = 0
+    private(set) var failureStreak = 0
 
     let prefs = Preferences.shared
     private var client: ProxyClient
     private var runner: CLIRunner
     private var pollTask: Task<Void, Never>?
-    private var failureStreak = 0
+    private var pollInFlight = false
+    private var pollAgain = false
     private var appSwitchedTo: (name: String, at: Date)?
     private var restartWatchUntil: Date?
-    private var startedAtBeforeRestart: Date?
+    private var restartRequestedAt: Date?
+    private var alertState: AlertState
+    private var wakeObserver: (any NSObjectProtocol)?
 
     init() {
-        let file = ConfigFile(path: ConfigFile.resolvePath())
-        configFile = file
-        let settings = (try? file.load().root).map(ConfigFile.proxySettings) ?? ConfigFile.ProxySettings(port: 3456, host: "127.0.0.1", apiKey: nil, trustLoopback: true)
-        let ep = ProxyEndpoint(host: "127.0.0.1", port: settings.port, apiKey: settings.apiKey)
+        let ep = ProxyEndpoint()
         endpoint = ep
+        configFile = ConfigFile(path: ConfigFile.resolvePath())
         client = ProxyClient(endpoint: ep)
         cliLocation = nil
         runner = CLIRunner(location: nil)
+        alertState = Preferences.shared.alertState
+        reloadEndpoint()
         Task { await self.resolveCLI() }
     }
 
     // MARK: - lifecycle
 
     func start() {
-        pollTask?.cancel()
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                await self.poll()
-                let delay = self.nextDelay()
-                try? await Task.sleep(for: .seconds(delay))
+        rescheduleLoop(pollNow: true)
+        if wakeObserver == nil {
+            wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in await self?.poll() }
             }
-        }
-        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.poll() }
         }
     }
 
     func stop() { pollTask?.cancel() }
+
+    /// Restart the loop so the next sleep uses the current cadence; `pollNow` also polls first.
+    private func rescheduleLoop(pollNow: Bool = false) {
+        guard pollTask != nil || pollNow else { return }
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            var skipPoll = !pollNow
+            while !Task.isCancelled {
+                guard let self else { return }
+                if !skipPoll { await self.poll() }
+                skipPoll = false
+                let delay = self.nextDelay()
+                try? await Task.sleep(for: .seconds(delay))
+            }
+        }
+    }
 
     private func nextDelay() -> TimeInterval {
         if let until = restartWatchUntil, Date() < until { return 1 }
@@ -96,13 +111,15 @@ final class AppStore {
         return popoverOpen ? prefs.pollOpen : prefs.pollClosed
     }
 
-    /// Re-read port/key from the config (after a key rotation or a port change).
+    /// Re-read port/host/key from the config (after a key rotation or a restart that changed the port).
     func reloadEndpoint() {
         let file = ConfigFile(path: ConfigFile.resolvePath(env: mergedEnv()))
         configFile = file
         guard let root = try? file.load().root else { return }
         let s = ConfigFile.proxySettings(root)
-        let ep = ProxyEndpoint(host: "127.0.0.1", port: s.port, apiKey: s.apiKey)
+        // The CLI's rule: a wildcard bind is not an address to dial, any other host is where the proxy actually is.
+        let host = (s.host == "0.0.0.0" || s.host == "::" || s.host.isEmpty) ? "127.0.0.1" : s.host
+        let ep = ProxyEndpoint(host: host, port: s.port, apiKey: s.apiKey)
         if ep != endpoint {
             endpoint = ep
             Task { await client.update(endpoint: ep) }
@@ -129,20 +146,21 @@ final class AppStore {
 
     // MARK: - updates
 
-    var updateAvailable: Bool { UpdateCheck.isNewer(latest: latestVersion, installed: serverVersion) }
+    /// What `teamclaude update` installed while the proxy still runs the previous version.
+    private(set) var installedVersion: String?
+
+    var updateAvailable: Bool { UpdateCheck.isNewer(latest: latestVersion, installed: installedVersion ?? serverVersion) }
 
     /// Ask npm once a day (or on demand) whether a newer teamclaude exists.
     func checkForUpdates(force: Bool) async {
-        let key = "lastUpdateCheck"
-        if !force, let last = UserDefaults.standard.object(forKey: key) as? Date, Date().timeIntervalSince(last) < 86_400,
-           let cached = UserDefaults.standard.string(forKey: "latestVersion") {
+        if !force, let last = prefs.lastUpdateCheck, Date().timeIntervalSince(last) < 86_400, let cached = prefs.cachedLatestVersion {
             latestVersion = cached
             return
         }
         if let v = try? await UpdateCheck.fetchLatest() {
             latestVersion = v
-            UserDefaults.standard.set(v, forKey: "latestVersion")
-            UserDefaults.standard.set(Date(), forKey: key)
+            prefs.cachedLatestVersion = v
+            prefs.lastUpdateCheck = Date()
         }
     }
 
@@ -156,7 +174,8 @@ final class AppStore {
             let r = try await runner.run(["update"], timeout: 600)
             let installed = UpdateCheck.installedVersion(fromUpdateOutput: r.stdout)
             if r.succeeded, let installed {
-                serverVersion = installed
+                // The running proxy is still the old version until it restarts; the version gate must not move early.
+                installedVersion = installed
                 restartPending.insert("teamclaude \(installed)")
                 updateNote = "Updated to \(installed) — restart the proxy to run it"
                 showToast(.ok, updateNote!)
@@ -180,8 +199,19 @@ final class AppStore {
 
     // MARK: - polling
 
+    /// One poll at a time: a second request while one is in flight runs once more
+    /// afterwards, so a slow earlier reply can never land on top of a newer one.
     func poll() async {
-        lastAttemptAt = Date()
+        if pollInFlight { pollAgain = true; return }
+        pollInFlight = true
+        defer { pollInFlight = false }
+        repeat {
+            pollAgain = false
+            await pollOnce()
+        } while pollAgain
+    }
+
+    private func pollOnce() async {
         let client = self.client
         let statusTask = Task { () -> Result<StatusSnapshot, Error> in
             do { return .success(try await client.status()) } catch { return .failure(error) }
@@ -207,10 +237,12 @@ final class AppStore {
             let wasDown = { if case .down = connection { return true } else { return false } }()
             connection = .up
             if wasDown { showToast(.ok, "Proxy is back") }
-            if let before = startedAtBeforeRestart, let now = s.server?.startedAt, now != before {
-                startedAtBeforeRestart = nil
+            // A `startedAt` later than the restart request is the restart, whether or not the proxy answered before it.
+            if let requested = restartRequestedAt, let started = s.server?.startedAt, started > requested {
+                restartRequestedAt = nil
                 restartWatchUntil = nil
                 restartPending.removeAll()
+                if let installedVersion { serverVersion = installedVersion; self.installedVersion = nil }
                 showToast(.ok, "Proxy restarted")
             }
             let prevTarget = previousStatus?.effectiveDefaultTarget
@@ -222,6 +254,9 @@ final class AppStore {
             failureStreak += 1
             let err = (e as? ProxyError) ?? .badReply(e.localizedDescription)
             NSLog("[TeamClaudeBar] status poll failed: %@ (%@)", err.message, String(describing: e))
+            // A restart the user asked for is expected to miss a few polls (launchd throttle, cold start); if the
+            // port changed in the config, the new one is where it comes back.
+            if restartRequestedAt != nil { reloadEndpoint(); return }
             // One missed poll is a blip (a busy proxy answers late); two in a row is down.
             if failureStreak >= 2 {
                 if case .down = connection {} else { connection = .down(since: Date(), error: err) }
@@ -234,6 +269,7 @@ final class AppStore {
         switch qr {
         case .success(let q):
             quota = q
+            quotaAt = Date()
             quotaSupported = true
         case .failure(let e):
             if case .notTeamClaude = e as? ProxyError { quotaSupported = false }
@@ -241,22 +277,47 @@ final class AppStore {
         }
     }
 
-    private func evaluateAlerts() {
-        let reachable = !isDown
-        let inputs = AlertInputs(previous: previousStatus, status: status, quota: quota, reachable: reachable,
-                                 appSwitchedTo: appSwitchedTo.flatMap { Date().timeIntervalSince($0.at) < 10 ? $0.name : nil })
-        let (alerts, state) = AlertEngine.evaluate(inputs, state: prefs.alertState, prefs: prefs.alertPrefs)
-        prefs.alertState = state
-        for a in alerts { Notifier.shared.post(a) }
+    /// The fleet numbers are only as fresh as the last `/quota` reply, which is the slow one on a busy proxy.
+    var freshQuota: QuotaSnapshot? {
+        guard quotaSupported, let quota, let at = quotaAt else { return nil }
+        let staleAfter = max(3 * (popoverOpen ? prefs.pollOpen : prefs.pollClosed), 90)
+        return Date().timeIntervalSince(at) > staleAfter ? nil : quota
     }
 
-    var reachable: Bool { if case .up = connection { return true } else { return false } }
+    private func evaluateAlerts() {
+        // While a restart is expected, a missed poll is not an outage.
+        let reachable = !isDown || restartRequestedAt != nil
+        let inputs = AlertInputs(previous: previousStatus, status: status, quota: freshQuota, reachable: reachable,
+                                 appSwitchedTo: appSwitchedTo.flatMap { Date().timeIntervalSince($0.at) < 10 ? $0.name : nil })
+        let (alerts, state) = AlertEngine.evaluate(inputs, state: alertState, prefs: prefs.alertPrefs)
+        // Persisting is a plist rewrite through cfprefsd; every poll for weeks adds up, so only on change.
+        if state != alertState {
+            alertState = state
+            prefs.alertState = state
+        }
+        for a in alerts { Notifier.shared.post(maskingNames(in: a)) }
+    }
+
+    /// "Hide account e-mails" applies to notifications too: they sit on the lock screen and in Notification Center history.
+    private func maskingNames(in alert: Alert) -> Alert {
+        guard prefs.hidePII, let names = status?.accounts.map(\.name) else { return alert }
+        var a = alert
+        for name in names.sorted(by: { $0.count > $1.count }) {
+            a.title = a.title.replacingOccurrences(of: name, with: displayName(name))
+            a.body = a.body.replacingOccurrences(of: name, with: displayName(name))
+        }
+        return a
+    }
+
     var isDown: Bool { if case .down = connection { return true } else { return false } }
-    var isStarting: Bool { if case .starting = connection { return true } else { return false } }
-    var consecutiveFailures: Int { failureStreak }
+
+    var restartPendingText: String? {
+        guard !restartPending.isEmpty else { return nil }
+        return "\(restartPending.count) change\(restartPending.count == 1 ? "" : "s") need a proxy restart (\(restartPending.sorted().joined(separator: ", ")))"
+    }
 
     var iconModel: IconModel {
-        MenuBarState.compute(IconInputs(status: status, quota: quotaSupported ? quota : nil, reachable: !isDown, lastSuccessAt: lastSuccessAt,
+        MenuBarState.compute(IconInputs(status: status, quota: freshQuota, reachable: !isDown, lastSuccessAt: lastSuccessAt,
                                         pollInterval: popoverOpen ? prefs.pollOpen : prefs.pollClosed, rotatedAt: rotatedAt, rotatedTo: rotatedTo,
                                         pinCurrent: prefs.pinCurrent, showRemaining: prefs.showRemaining, warnLevel: prefs.warnLevel))
     }
@@ -282,18 +343,20 @@ final class AppStore {
         }
     }
 
-    func reloadConfig() {
-        Task {
-            do {
-                let r = try await client.reload()
-                showToast(.ok, r.added > 0 ? "Reloaded (+\(r.added) new account)" : "Reloaded")
-                await poll()
-            } catch let e as ProxyError {
-                showToast(.error, "Reload failed: \(e.message)")
-            } catch {
-                showToast(.error, "Reload failed: \(error.localizedDescription)")
-            }
+    /// `POST /teamclaude/reload`; the result is what callers report, not a guess.
+    @discardableResult
+    func reloadConfig() async -> Bool {
+        do {
+            let r = try await client.reload()
+            showToast(.ok, r.added > 0 ? "Reloaded (+\(r.added) new account)" : "Reloaded")
+            await poll()
+            return r.ok
+        } catch let e as ProxyError {
+            showToast(.error, "Reload failed: \(e.message)")
+        } catch {
+            showToast(.error, "Reload failed: \(error.localizedDescription)")
         }
+        return false
     }
 
     var settingsOps: SettingsOps {
@@ -321,7 +384,8 @@ final class AppStore {
             } else {
                 showToast(.ok, "\(label) applied")
             }
-            if case .json(let path, _, _) = change, path.first == "proxy" { reloadEndpoint() }
+            // A live proxy key change moves the client now; a port or host change waits for the restart it needs.
+            if case .json(let path, _, _) = change, path.first == "proxy", !outcome.restartRequired { reloadEndpoint() }
             loadConfigRoot()
             await poll()
             return outcome
@@ -337,24 +401,31 @@ final class AppStore {
         return nil
     }
 
-    func runCLI(_ args: [String], stdin: String? = nil, timeout: TimeInterval = 30, onLine: (@Sendable (OutputLine) -> Void)? = nil) async throws -> CLIResult {
-        try await runner.run(args, stdin: stdin, timeout: timeout, onLine: onLine)
+    func runCLI(_ args: [String], stdin: String? = nil, stdinWriter: StdinWriter? = nil, timeout: TimeInterval = 30,
+                onLine: (@Sendable (OutputLine) -> Void)? = nil) async throws -> CLIResult {
+        try await runner.run(args, stdin: stdin, stdinWriter: stdinWriter, timeout: timeout, onLine: onLine)
     }
 
-    /// `launchctl kickstart -k` on the agent, then poll fast until `startedAt` changes.
+    /// `launchctl kickstart -k` on the agent, then poll fast until `startedAt` moves past the request.
     func restartService() async {
-        startedAtBeforeRestart = status?.server?.startedAt
+        restartRequestedAt = Date()
         restartWatchUntil = Date().addingTimeInterval(30)
+        rescheduleLoop()
         let uid = getuid()
-        let result = try? await CLIRunner.execute(executable: URL(fileURLWithPath: "/bin/launchctl"),
-                                                  arguments: ["kickstart", "-k", "gui/\(uid)/\(ProxyLocator.launchAgentLabel)"],
-                                                  environment: ProcessInfo.processInfo.environment, timeout: 15)
-        if let result, !result.succeeded {
+        do {
+            let result = try await CLIRunner.execute(executable: URL(fileURLWithPath: "/bin/launchctl"),
+                                                     arguments: ["kickstart", "-k", "gui/\(uid)/\(ProxyLocator.launchAgentLabel)"],
+                                                     environment: ProcessInfo.processInfo.environment, timeout: 15)
+            if result.succeeded {
+                showToast(.info, "Restarting the proxy…")
+                return
+            }
             showToast(.error, "launchctl: \(result.failureMessage)")
-            restartWatchUntil = nil
-        } else {
-            showToast(.info, "Restarting the proxy…")
+        } catch {
+            showToast(.error, "launchctl: \((error as? CLIError)?.message ?? error.localizedDescription)")
         }
+        restartRequestedAt = nil
+        restartWatchUntil = nil
     }
 
     // MARK: - config document & service health (settings screens)
@@ -380,12 +451,17 @@ final class AppStore {
         let installed = FileManager.default.fileExists(atPath: plist.path)
         let env = ProcessInfo.processInfo.environment
         async let print = try? CLIRunner.execute(executable: URL(fileURLWithPath: "/bin/launchctl"), arguments: ["print", "gui/\(uid)/\(ProxyLocator.launchAgentLabel)"], environment: env, timeout: 10)
-        async let lsof = try? CLIRunner.execute(executable: URL(fileURLWithPath: "/usr/sbin/lsof"), arguments: ["-nP", "-iTCP:\(endpoint.port)", "-sTCP:LISTEN", "-Fpc"], environment: env, timeout: 10)
-        let (p, l) = await (print, lsof)
+        async let lsof = portOwner()
+        let (p, owner) = await (print, lsof)
         let health = ServiceHealth.parse(launchctlPrint: (p?.succeeded ?? false) ? p?.stdout : nil, installed: installed)
-        let owner = l.flatMap { $0.succeeded ? PortOwner.parse(lsofFields: $0.stdout) : nil }
         serviceHealth = health
         serviceDiagnosis = ServiceDiagnosis.diagnose(health: health, portOwner: owner)
+    }
+
+    private func portOwner() async -> PortOwner? {
+        let r = try? await CLIRunner.execute(executable: URL(fileURLWithPath: "/usr/sbin/lsof"), arguments: ["-nP", "-iTCP:\(endpoint.port)", "-sTCP:LISTEN", "-Fpc"],
+                                             environment: ProcessInfo.processInfo.environment, timeout: 10)
+        return r.flatMap { $0.succeeded ? PortOwner.parse(lsofFields: $0.stdout) : nil }
     }
 
     /// `teamclaude service install|uninstall` through the CLI, then re-diagnose.
@@ -404,12 +480,34 @@ final class AppStore {
     }
 
     /// Send SIGTERM to the process holding the port (a foreground `teamclaude server`), then kickstart the agent.
+    /// The owner is looked up again first: the diagnosis may be minutes old and pids get reused.
     func quitPortOwnerAndRestart(pid: Int) async {
-        kill(pid_t(pid), SIGTERM)
+        guard let owner = await portOwner(), owner.pid == pid else {
+            showToast(.warn, "That process no longer holds the port")
+            await refreshServiceHealth()
+            return
+        }
+        guard owner.command.isEmpty || owner.command.contains("node") || owner.command.contains("teamclaude") else {
+            showToast(.error, "Port \(endpoint.port) is held by \(owner.command), not teamclaude — quit it yourself or change the port")
+            return
+        }
+        if kill(pid_t(pid), SIGTERM) != 0 {
+            showToast(.error, "Could not signal pid \(pid): \(String(cString: strerror(errno)))")
+            return
+        }
         try? await Task.sleep(for: .seconds(2))
         await restartService()
         try? await Task.sleep(for: .seconds(3))
         await refreshServiceHealth()
+    }
+
+    func deleteStateFile() {
+        do {
+            try FileManager.default.removeItem(at: configFile.statePath)
+            showToast(.ok, "State file deleted")
+        } catch {
+            showToast(.error, "Could not delete the state file: \(error.localizedDescription)")
+        }
     }
 
     func clearRestartPending() { restartPending.removeAll() }

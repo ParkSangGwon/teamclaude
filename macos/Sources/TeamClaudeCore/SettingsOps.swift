@@ -29,9 +29,8 @@ public enum SettingChange: Sendable, Equatable {
 }
 
 public enum ApplyPath: Sendable, Equatable {
-    case cli([String], Applies)
     case patch(path: [String], value: JSON?, Applies)
-    case accountPatch(name: String, id: String?, key: String, value: JSON?, Applies)
+    case accountPatch(name: String, id: String?, org: String?, key: String, value: JSON?, Applies)
     case routesPatch(RoutesEdit, Applies)
     case removeAccountPatch(name: String, org: String?, Applies)
 }
@@ -103,7 +102,9 @@ public enum SettingsPlanner {
         case .thresholdTable(let table):
             var obj: [String: JSON] = [:]
             for (k, v) in table { if let v { obj[k] = .number(v / 100) } }
-            return .patch(path: ["switchThreshold"], value: obj.isEmpty ? .number(0.98) : .object(obj), .live)
+            // The CLI's rule: a table holding only `default` is the plain scalar written the long way.
+            if obj.keys.allSatisfy({ $0 == "default" }) { return .patch(path: ["switchThreshold"], value: obj["default"] ?? .number(0.98), .live) }
+            return .patch(path: ["switchThreshold"], value: .object(obj), .live)
         case .probe(let secs):
             return .patch(path: ["quotaProbeSeconds"], value: .number(Double(max(0, secs))), .live)
         case .warmupOff:
@@ -117,12 +118,12 @@ public enum SettingsPlanner {
         case .distribute(let mode):
             let v: JSON = mode == "adaptive" ? .string("adaptive") : .bool(mode == "on")
             return .patch(path: ["distributeSessions"], value: v, .live)
-        case .priority(let account, _, let value):
+        case .priority(let account, let org, let value):
             let n: Int
             switch value { case .number(let x): n = x; case .first: n = -1; case .last: n = 100 }
-            return .accountPatch(name: account, id: nil, key: "priority", value: .number(Double(n)), .live)
-        case .enabled(let account, _, let enabled):
-            return .accountPatch(name: account, id: nil, key: "disabled", value: enabled ? nil : .bool(true), .live)
+            return .accountPatch(name: account, id: nil, org: org, key: "priority", value: .number(Double(n)), .live)
+        case .enabled(let account, let org, let enabled):
+            return .accountPatch(name: account, id: nil, org: org, key: "disabled", value: enabled ? nil : .bool(true), .live)
         case .routeAdd(let name, let match, let accounts, let bucket, let color):
             return .routesPatch(.upsert(name: name, match: match, accounts: accounts, bucket: bucket, color: color), .live)
         case .routeRemove(let name):
@@ -132,13 +133,13 @@ public enum SettingsPlanner {
         case .json(let path, let value, let applies):
             return .patch(path: path, value: value, applies)
         case .accountField(let name, let id, let key, let value, let applies):
-            return .accountPatch(name: name, id: id, key: key, value: value, applies)
+            return .accountPatch(name: name, id: id, org: nil, key: key, value: value, applies)
         }
     }
 
     public static func applies(_ change: SettingChange) -> Applies {
         switch jsonPath(change) {
-        case .cli(_, let a), .patch(_, _, let a), .accountPatch(_, _, _, _, let a), .routesPatch(_, let a), .removeAccountPatch(_, _, let a): return a
+        case .patch(_, _, let a), .accountPatch(_, _, _, _, _, let a), .routesPatch(_, let a), .removeAccountPatch(_, _, let a): return a
         }
     }
 
@@ -150,15 +151,18 @@ public enum SettingsPlanner {
     /// Apply a JSON-path plan to a config document.
     public static func mutate(_ root: inout JSON, _ path: ApplyPath) throws {
         switch path {
-        case .cli:
-            return
         case .patch(let p, let value, _):
             // warmup: interval and schedule are mutually exclusive.
             if p == ["warmupSeconds"] { ConfigFile.patch(&root, path: ["warmupSchedule"], value: nil) }
             if p == ["warmupSchedule"] { ConfigFile.patch(&root, path: ["warmupSeconds"], value: .number(0)) }
             ConfigFile.patch(&root, path: p, value: value)
-        case .accountPatch(let name, let id, let key, let value, _):
-            guard ConfigFile.patchAccount(&root, name: name, id: id, key: key, value: value) else { throw SettingsError.noSuchAccount(name) }
+        case .accountPatch(let name, let id, let org, let key, let value, _):
+            switch ConfigFile.matchAccount(root, name: name, id: id, org: org) {
+            case .notFound: throw SettingsError.noSuchAccount(name)
+            case .ambiguous: throw SettingsError.ambiguousAccount(name)
+            case .index: break
+            }
+            guard ConfigFile.patchAccount(&root, name: name, id: id, org: org, key: key, value: value) else { throw SettingsError.noSuchAccount(name) }
         case .routesPatch(let edit, _):
             var routes = root["routes"].array ?? []
             switch edit {
@@ -174,9 +178,11 @@ public enum SettingsPlanner {
             ConfigFile.patch(&root, path: ["routes"], value: .array(routes))
         case .removeAccountPatch(let name, let org, _):
             var rows = root["accounts"].array ?? []
-            let matches = rows.indices.filter { rows[$0]["name"].string == name && (org == nil || rows[$0]["orgUuid"].string == org || rows[$0]["orgName"].string == org) }
-            guard matches.count == 1 else { throw matches.isEmpty ? SettingsError.noSuchAccount(name) : SettingsError.ambiguousAccount(name) }
-            rows.remove(at: matches[0])
+            switch ConfigFile.matchAccount(root, name: name, org: org) {
+            case .notFound: throw SettingsError.noSuchAccount(name)
+            case .ambiguous: throw SettingsError.ambiguousAccount(name)
+            case .index(let i): rows.remove(at: i)
+            }
             ConfigFile.patch(&root, path: ["accounts"], value: .array(rows))
         }
     }
@@ -244,7 +250,8 @@ public struct SettingsOps: Sendable {
             outcome.reloaded = r.ok
             outcome.added = r.added
         } catch let e as ProxyError {
-            outcome.note = e == .timedOut ? e.message : "Saved to the config; it applies when the proxy starts"
+            // Only "nothing is listening" means the change waits for a start; a 401/404/500 is a running proxy saying no.
+            if case .unreachable = e { outcome.note = "Saved to the config; it applies when the proxy starts" } else { outcome.note = e.message }
         } catch {
             outcome.note = "Saved to the config; reload failed: \(error.localizedDescription)"
         }

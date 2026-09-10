@@ -7,6 +7,7 @@ struct ProxyPane: View {
     @State private var cliPath = ""
     @State private var testing = false
     @State private var testResult: String?
+    @State private var confirmUninstall = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -38,19 +39,24 @@ struct ProxyPane: View {
                 }
                 HStack {
                     switch store.serviceDiagnosis {
-                    case .portHeldElsewhere(let pid, _, _):
+                    case .portHeldElsewhere(let pid, let command, _) where command.isEmpty || command.contains("node") || command.contains("teamclaude"):
                         Button("Quit that process and start the service") { Task { await store.quitPortOwnerAndRestart(pid: pid) } }.controlSize(.small).buttonStyle(.borderedProminent)
+                    case .portHeldElsewhere:
+                        Text("Quit that program or change the port above.").font(.system(size: 11)).foregroundStyle(.secondary)
                     case .notInstalled:
                         Button("Install service") { Task { await store.service("install") } }.controlSize(.small).buttonStyle(.borderedProminent)
                     default:
                         Button("Restart") { Task { await store.restartService(); try? await Task.sleep(for: .seconds(3)); await store.refreshServiceHealth() } }.controlSize(.small)
                         Button("Reinstall") { Task { await store.service("install") } }.controlSize(.small)
-                        Button("Uninstall…") { Task { await store.service("uninstall") } }.controlSize(.small)
+                        Button("Uninstall…") { confirmUninstall = true }.controlSize(.small)
                     }
                     Button("Refresh") { Task { await store.refreshServiceHealth() } }.controlSize(.small)
                 }
                 Text("Reinstall rewrites the plist with the current CLI path and the Standard process type; the proxy restarts once.").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .confirmationDialog("Uninstall the LaunchAgent?", isPresented: $confirmUninstall) {
+                Button("Uninstall", role: .destructive) { Task { await store.service("uninstall") } }
+            } message: { Text("The proxy stops and no longer starts at login. The config and accounts are kept; reinstall from this pane.") }
             card("teamclaude CLI") {
                 row("Detected", store.cliLocation.map { "\($0.describe) (\($0.source.rawValue))" } ?? "not found")
                 row("Version", store.serverVersion ?? "—")
@@ -60,7 +66,7 @@ struct ProxyPane: View {
                     Button("Test") { test() }.controlSize(.small).disabled(testing)
                 }
                 if let testResult { Text(testResult).font(.system(size: 11)).foregroundStyle(.secondary) }
-                Text("Order: LaunchAgent plist → login shell PATH → this override. Settings that have a CLI command go through it; the rest edit the config file directly.").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("Order: this override → LaunchAgent plist → login shell PATH. Settings that have a CLI command go through it; the rest edit the config file directly.").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Divider()
             Text("Network & keys").font(.system(size: 13, weight: .semibold))
@@ -74,7 +80,7 @@ struct ProxyPane: View {
 
     private var connectionText: String {
         switch store.connection {
-        case .starting: return store.consecutiveFailures > 0 ? "no answer yet — retrying…" : "connecting…"
+        case .starting: return store.failureStreak > 0 ? "no answer yet — retrying…" : "connecting…"
         case .up: return "reachable" + (store.lastSuccessAt.map { " · updated \(Derived.formatDuration(Date().timeIntervalSince($0))) ago" } ?? "")
         case .down(let since, let e): return "\(e.message) (since \(since.formatted(date: .omitted, time: .shortened)))"
         }
@@ -102,15 +108,8 @@ struct ProxyPane: View {
         switch d { case .healthy: return .green; case .notInstalled, .notLoaded, .stopped: return .secondary; default: return .orange }
     }
 
-    @ViewBuilder
     private func card<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 13, weight: .semibold))
-            content()
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+        TitledGroup(title: title, content: content)
     }
 
     private func row(_ label: String, _ value: String) -> some View {

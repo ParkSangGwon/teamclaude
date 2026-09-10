@@ -58,9 +58,10 @@ public enum Derived {
         return ratio < 0.7 ? .green : ratio < 0.9 ? .yellow : .red
     }
 
-    /// Raw-fill colouring for a bucket with no window (fleet aggregates, tokens).
+    /// Raw-fill colouring for a bucket with no window (fleet aggregates, tokens):
+    /// the TUI's no-window fallback, green / yellow / red.
     public static func rawLevel(_ ratio: Double, warn: Double = 0.7, critical: Double = 0.9) -> Level {
-        ratio < warn ? .green : ratio < critical ? .orange : .red
+        ratio < warn ? .green : ratio < critical ? .yellow : .red
     }
 
     /// Fraction of the window already elapsed (the tick on a bar), or nil without a window.
@@ -75,6 +76,8 @@ public enum Derived {
     public static func formatReset(_ resetAt: Date?, now: Date = Date()) -> String {
         guard let resetAt else { return "" }
         let ms = resetAt.timeIntervalSince(now) * 1000
+        // A date far enough out to overflow `Int` minutes comes from a broken clock, not a window.
+        guard ms.isFinite, ms < 1e18 else { return "" }
         if ms <= 0 { return "" }
         let mins = Int((ms / 60000).rounded(.up))
         if mins < 60 { return "\(mins)m" }
@@ -141,7 +144,17 @@ public enum Derived {
         return String(format: "%.1f%%", pct)
     }
 
-    public static func percentInt(_ value: Double) -> Int { Int((value * 100).rounded()) }
+    /// Whole percent, clamped so a hostile ratio (±inf, 1e300) cannot trap the conversion.
+    public static func percentInt(_ value: Double) -> Int {
+        guard value.isFinite else { return 0 }
+        return Int(min(1e6, max(-1e6, (value * 100).rounded())))
+    }
+
+    /// `1 - remaining/limit` for token and request pools; nil when the pool has no size.
+    public static func usedFraction(remaining: Double?, limit: Double?) -> Double? {
+        guard let remaining, let limit, limit > 0, remaining.isFinite, limit.isFinite else { return nil }
+        return 1 - remaining / limit
+    }
 
     /// "Max 20x" / "Max 5x" / "Pro" / "Team 20x" / "tier ?".
     public static func tierBadge(_ tier: Tier?) -> String {
@@ -321,5 +334,11 @@ extension Derived {
     /// Every account is out of rotation: requests will queue or 429.
     public static func isHold(_ s: StatusSnapshot) -> Bool {
         !s.accounts.isEmpty && s.accounts.allSatisfy { $0.unavailable != nil }
+    }
+
+    /// Why nothing can serve, for the hold banner and the hold notification.
+    public static func holdReason(_ s: StatusSnapshot) -> String {
+        let stalled = s.accounts.filter { $0.unavailable == "quota" || $0.unavailable == "throttled" }
+        return stalled.count == s.accounts.count ? "every account is over its quota threshold or in a rate-limit hold" : "every account is out of rotation"
     }
 }

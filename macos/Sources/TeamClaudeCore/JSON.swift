@@ -70,7 +70,10 @@ public enum JSON: Sendable, Equatable {
         switch self {
         case .number(let d):
             guard d.isFinite, d > 0 else { return nil }
-            return Date(timeIntervalSince1970: d >= 1e11 ? d / 1000 : d)
+            let seconds = d >= 1e11 ? d / 1000 : d
+            // Past year ~30000 nothing downstream (countdowns, `Int` conversions) is meaningful; a hostile value must not trap.
+            guard seconds < 1e12 else { return nil }
+            return Date(timeIntervalSince1970: seconds)
         case .string(let s):
             return JSON.parseISO8601(s)
         default:

@@ -19,7 +19,7 @@ struct FieldRow: View {
                 Spacer()
                 AppliesTag(applies: applies)
             }
-            control
+            control.accessibilityLabel(field.label)
             Text(field.help).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 8)
@@ -56,9 +56,10 @@ struct FieldRow: View {
 struct AppliesTag: View {
     var applies: Applies
     var body: some View {
+        // The adaptive severity colours: system green/yellow are near-invisible on the light window background.
         switch applies {
-        case .live: Text("applies live").font(.system(size: 10, weight: .semibold)).foregroundStyle(.green)
-        default: Label("restart", systemImage: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).foregroundStyle(.yellow)
+        case .live: Label("applies live", systemImage: "bolt.fill").font(.system(size: 10, weight: .semibold)).foregroundStyle(Level.green.color)
+        default: Label("restart", systemImage: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).foregroundStyle(Level.orange.color)
         }
     }
 }
@@ -203,6 +204,7 @@ struct KeyedNumbersEditor: View {
     var value: JSON
     var onCommit: (JSON?) -> Void
     @State private var texts: [String: String] = [:]
+    @State private var error: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -212,12 +214,16 @@ struct KeyedNumbersEditor: View {
             ForEach(keys, id: \.self) { key in
                 HStack {
                     Text(key).font(.system(size: 12, design: .monospaced)).frame(width: 150, alignment: .leading)
-                    TextField("default", text: Binding(get: { texts[key] ?? "" }, set: { texts[key] = $0 })).textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing)
+                    TextField(key, text: Binding(get: { texts[key] ?? "" }, set: { texts[key] = $0 }), prompt: Text("default"))
+                        .labelsHidden().textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing)
                         .onSubmit(commit)
                     Text("%").foregroundStyle(.secondary)
                 }
             }
-            Button("Apply") { commit() }.controlSize(.small)
+            HStack {
+                Button("Apply") { commit() }.controlSize(.small)
+                if let error { Text(error).font(.system(size: 11)).foregroundStyle(.red) }
+            }
         }
         .onAppear(perform: load)
         .onChange(of: value) { _, _ in load() }
@@ -227,18 +233,23 @@ struct KeyedNumbersEditor: View {
         var t: [String: String] = [:]
         if let obj = value.object {
             for (k, v) in obj { if let d = v.double { t[k] = String(format: "%g", d * 100) } }
+        } else if let d = value.double {
+            t["default"] = String(format: "%g", d * 100)
         }
         texts = t
+        error = nil
     }
 
+    /// Nothing is written while any entry is wrong: a silently dropped value would read as "applied".
     private func commit() {
         var obj: [String: JSON] = [:]
         for key in keys {
             let raw = (texts[key] ?? "").trimmingCharacters(in: .whitespaces)
             if raw.isEmpty { continue }
-            guard let pct = Double(raw), pct >= 0, pct <= 100 else { continue }
+            guard let pct = Double(raw), pct >= 0, pct <= 100 else { error = "\(key): a number from 0 to 100"; return }
             obj[key] = .number(pct / 100)
         }
+        error = nil
         onCommit(obj.isEmpty ? nil : .object(obj))
     }
 }
@@ -256,11 +267,14 @@ struct ObjectListEditor: View {
                 HStack {
                     ForEach(fields, id: \.self) { f in
                         let secret = SettingsSchema.sensitiveKeys.contains(f)
+                        // Index-keyed rows: a binding can be read once more after its row was removed.
+                        let text = Binding(get: { rows.indices.contains(i) ? rows[i][f] ?? "" : "" },
+                                           set: { if rows.indices.contains(i) { rows[i][f] = $0 } })
                         Group {
                             if secret {
-                                SecureField(f, text: Binding(get: { rows[i][f] ?? "" }, set: { rows[i][f] = $0 }))
+                                SecureField(f, text: text)
                             } else {
-                                TextField(f, text: Binding(get: { rows[i][f] ?? "" }, set: { rows[i][f] = $0 }))
+                                TextField(f, text: text)
                             }
                         }.textFieldStyle(.roundedBorder).frame(width: 180)
                     }
@@ -311,9 +325,29 @@ struct SchemaPane: View {
     var body: some View {
         ForEach(fields) { field in
             FieldRow(field: field, value: displayValue(field)) { new in
-                Task { await store.apply(change(for: field, value: new), label: field.label) }
+                if let why = SchemaPane.validate(field, value: new) {
+                    store.showToast(.error, "\(field.label): \(why)")
+                    return
+                }
+                Task { await store.apply(SchemaPane.change(for: field, value: new), label: field.label) }
             }
             Divider()
+        }
+    }
+
+    /// What the CLI does not check for us and the proxy would die on at reload.
+    static func validate(_ field: SettingField, value: JSON?) -> String? {
+        switch field.id {
+        case "upstreamProxy":
+            return value?.string.flatMap(SettingsValidation.upstreamProxy)
+        case "proxy.usageDimensions":
+            let headers = (value?.array ?? []).compactMap { $0["header"].string?.lowercased() }
+            if let reserved = headers.first(where: { SettingsValidation.reservedDimensionHeaders.contains($0) }) {
+                return "\(reserved) is a reserved header and cannot be a usage dimension"
+            }
+            return nil
+        default:
+            return nil
         }
     }
 
@@ -333,14 +367,16 @@ struct SchemaPane: View {
         return raw
     }
 
-    static func change(for field: SettingField, value: JSON?, serverVersion: String?) -> SettingChange {
+    static func change(for field: SettingField, value: JSON?) -> SettingChange {
         switch field.id {
         case "switchThreshold":
             return .threshold(percent: value?.double ?? 98)
         case "switchThresholds":
             var table: [String: Double?] = [:]
-            for key in Buckets.all { table[key] = value?[key].double.map { $0 * 100 } }
+            for key in ["default"] + Buckets.all { table[key] = value?[key].double.map { $0 * 100 } }
+            // `default=default` is refused by the CLI: with every override cleared, the plain scalar is the fallback.
             if table.values.allSatisfy({ $0 == nil }) { return .threshold(percent: 98) }
+            if table["default"] == nil { table.removeValue(forKey: "default") }
             return .thresholdTable(table)
         case "distributeSessions":
             return .distribute(value?.string ?? "off")
@@ -352,9 +388,5 @@ struct SchemaPane: View {
         default:
             return .json(path: field.path, value: value, applies: field.applies)
         }
-    }
-
-    private func change(for field: SettingField, value: JSON?) -> SettingChange {
-        SchemaPane.change(for: field, value: value, serverVersion: store.serverVersion)
     }
 }

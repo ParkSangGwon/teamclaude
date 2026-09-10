@@ -141,6 +141,16 @@ final class SettingsOpsTests: XCTestCase {
         XCTAssertTrue(other.note?.hasPrefix("Saved to the config; reload failed: ") == true, other.note ?? "nil")
     }
 
+    func testARunningProxyThatRefusesTheReloadIsNamedAsSuch() async throws {
+        // 401/404/500 come from a proxy that is up; "applies when the proxy starts" would be a lie.
+        for e in [ProxyError.unauthorized, .unsupported, .rejected("nope"), .notTeamClaude(500), .badReply("x")] {
+            fake.reloadResult = .failure(e)
+            let o = try await fake.ops().apply(.threshold(percent: 90))
+            XCTAssertFalse(o.reloaded)
+            XCTAssertEqual(o.note, e.message, "\(e)")
+        }
+    }
+
     func testReloadResultIsReported() async throws {
         fake.reloadResult = .success(ReloadResult(ok: true, added: 2))
         let outcome = try await fake.ops().apply(.removeAccount(name: "codex@example.com", org: nil))

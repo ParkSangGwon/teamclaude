@@ -25,16 +25,29 @@ public struct AlertPrefs: Sendable, Equatable, Codable {
 
     public init() {}
 
+    /// A blob written by an older build lacks the keys added since; they take their defaults.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        levels = try c.decodeIfPresent([Int].self, forKey: .levels) ?? levels
+        fleetFiveHour = try c.decodeIfPresent(Bool.self, forKey: .fleetFiveHour) ?? fleetFiveHour
+        fleetWeekly = try c.decodeIfPresent(Bool.self, forKey: .fleetWeekly) ?? fleetWeekly
+        rotation = try c.decodeIfPresent(Bool.self, forKey: .rotation) ?? rotation
+        accountError = try c.decodeIfPresent(Bool.self, forKey: .accountError) ?? accountError
+        hold = try c.decodeIfPresent(Bool.self, forKey: .hold) ?? hold
+        proxyDown = try c.decodeIfPresent(Bool.self, forKey: .proxyDown) ?? proxyDown
+        proxyBack = try c.decodeIfPresent(Bool.self, forKey: .proxyBack) ?? proxyBack
+        spend = try c.decodeIfPresent(Bool.self, forKey: .spend) ?? spend
+        pausedUntil = try c.decodeIfPresent(Date.self, forKey: .pausedUntil)
+    }
+
     public func isPaused(at now: Date) -> Bool { pausedUntil.map { $0 > now } ?? false }
 }
 
 /// Persisted between launches so a relaunch does not re-fire a level already announced.
 public struct AlertState: Sendable, Equatable, Codable {
     public var seeded = false
-    /// metric → levels already fired in the current window.
+    /// metric → levels already fired; a level re-arms once usage falls five points below it.
     public var fired: [String: [Int]] = [:]
-    /// metric → the `nextResetAt` the fired levels belong to.
-    public var windowIds: [String: Double] = [:]
     public var lastCurrent: String? = nil
     public var allOut = false
     public var errorAccounts: [String] = []
@@ -43,6 +56,20 @@ public struct AlertState: Sendable, Equatable, Codable {
     public var spendSeen: [String] = []
 
     public init() {}
+
+    /// Missing keys (a blob from before they existed) must not throw the whole state
+    /// away, or every already-announced level fires again after an update.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        seeded = try c.decodeIfPresent(Bool.self, forKey: .seeded) ?? seeded
+        fired = try c.decodeIfPresent([String: [Int]].self, forKey: .fired) ?? fired
+        lastCurrent = try c.decodeIfPresent(String.self, forKey: .lastCurrent)
+        allOut = try c.decodeIfPresent(Bool.self, forKey: .allOut) ?? allOut
+        errorAccounts = try c.decodeIfPresent([String].self, forKey: .errorAccounts) ?? errorAccounts
+        downStreak = try c.decodeIfPresent(Int.self, forKey: .downStreak) ?? downStreak
+        announcedDown = try c.decodeIfPresent(Bool.self, forKey: .announcedDown) ?? announcedDown
+        spendSeen = try c.decodeIfPresent([String].self, forKey: .spendSeen) ?? spendSeen
+    }
 }
 
 public struct AlertInputs: Sendable {
@@ -93,7 +120,9 @@ public enum AlertEngine {
         let seeding = !s.seeded
         s.seeded = true
 
-        // Fleet levels (5h / 7d), once per level per reset window.
+        // Fleet levels (5h / 7d): once per crossing, re-armed by the hysteresis band only.
+        // The aggregate's `nextResetAt` is the earliest of every account's windows, so
+        // keying on it would re-announce "at 90%" each time any one account resets.
         if let quota = inputs.quota {
             let metrics: [(String, String, Bool, String)] = [
                 ("fiveHour", "fleet.5h", prefs.fleetFiveHour, "Fleet 5-hour usage"),
@@ -101,8 +130,6 @@ public enum AlertEngine {
             ]
             for (bucket, key, enabled, title) in metrics {
                 guard let agg = quota.aggregate[bucket], let util = agg.utilization else { continue }
-                let windowId = agg.nextResetAt?.timeIntervalSince1970 ?? 0
-                if s.windowIds[key] != windowId { s.windowIds[key] = windowId; s.fired[key] = [] }
                 var fired = s.fired[key] ?? []
                 let pct = util * 100
                 for level in prefs.levels.sorted() {
@@ -111,7 +138,8 @@ public enum AlertEngine {
                             fired.append(level)
                             if enabled, !seeding {
                                 let reset = agg.nextResetAt.map { " · next reset in \(Derived.formatReset($0, now: inputs.now))" } ?? ""
-                                emit(Alert(kind: .fleetLevel, id: "\(key).\(level).\(Int(windowId))", title: "\(title) at \(Derived.percentInt(util))%",
+                                // One id per metric and level: the next window's alert replaces the last instead of piling up.
+                                emit(Alert(kind: .fleetLevel, id: "\(key).\(level)", title: "\(title) at \(Derived.percentInt(util))%",
                                            body: "\(agg.knownAccounts) accounts weighted by tier\(reset)", sound: false))
                             }
                         }
@@ -145,9 +173,7 @@ public enum AlertEngine {
         // Every account out of rotation.
         let hold = Derived.isHold(status)
         if hold, !s.allOut, !seeding, prefs.hold {
-            let stalled = status.accounts.filter { $0.unavailable == "quota" || $0.unavailable == "throttled" }
-            let why = stalled.count == status.accounts.count ? "every account is over its quota threshold or in a rate-limit hold" : "every account is out of rotation"
-            emit(Alert(kind: .hold, id: "hold", title: "No account can serve requests", body: why, sound: true))
+            emit(Alert(kind: .hold, id: "hold", title: "No account can serve requests", body: Derived.holdReason(status), sound: true))
         }
         s.allOut = hold
 

@@ -88,14 +88,14 @@ struct SettingsPaneOnly: View {
 extension SettingsRootView {
     private var restartBar: some View {
         HStack {
-            Label("\(store.restartPending.count) change\(store.restartPending.count == 1 ? "" : "s") need a proxy restart (\(store.restartPending.sorted().joined(separator: ", ")))", systemImage: "arrow.clockwise")
-                .font(.system(size: 12)).foregroundStyle(.yellow)
+            Label(store.restartPendingText ?? "", systemImage: "arrow.clockwise")
+                .font(.system(size: 12)).foregroundStyle(Level.orange.color)
             Spacer()
             Button("Later") { store.clearRestartPending() }.controlSize(.small)
             Button("Restart service") { Task { await store.restartService() } }.controlSize(.small).buttonStyle(.borderedProminent)
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(Color.yellow.opacity(0.1))
+        .background(Level.orange.color.opacity(0.1))
         .overlay(alignment: .top) { Divider() }
     }
 
@@ -149,10 +149,14 @@ struct GeneralPane: View {
                 Toggle("Show remaining instead of used", isOn: $showRemaining)
                 Toggle("Monochrome (follows the menu bar)", isOn: $monochrome)
                 HStack {
-                    Toggle("Keep next to the system items (a full menu bar otherwise hides it)", isOn: $keepRight)
+                    Toggle("Keep next to the system items on first launch (a full menu bar otherwise hides it)", isOn: $keepRight)
                     Button("Reposition now") { keepRight = true; store.prefs.keepRight = true; (NSApp.delegate as? AppDelegate)?.repositionStatusItem() }.controlSize(.small)
                 }
-                HStack { Text("Warning level"); Slider(value: $warnLevel, in: 0.5...0.95, step: 0.05).frame(width: 200); Text("\(Int(warnLevel * 100))%").monospacedDigit() }
+                HStack {
+                    Text("Warning level")
+                    Slider(value: $warnLevel, in: 0.5...0.95, step: 0.05).frame(width: 200).accessibilityLabel("Warning level")
+                    Text("\(Int(warnLevel * 100))%").monospacedDigit()
+                }
             }
             group("Refresh") {
                 Picker("Popover open", selection: $pollOpen) { Text("1 s").tag(1.0); Text("2 s").tag(2.0); Text("5 s").tag(5.0) }.frame(maxWidth: 300)
@@ -228,15 +232,8 @@ struct GeneralPane: View {
         if !levels.isEmpty { alerts.levels = levels }
     }
 
-    @ViewBuilder
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 13, weight: .semibold))
-            content()
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+        TitledGroup(title: title, content: content)
     }
 }
 
@@ -284,7 +281,7 @@ struct AdvancedPane: View {
                 Text("Observed quota and usage counters. Safe to delete: quota is re-learned from traffic.").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             .confirmationDialog("Delete the state file?", isPresented: $confirmState) {
-                Button("Delete", role: .destructive) { try? FileManager.default.removeItem(at: store.configFile.statePath); store.showToast(.ok, "State file deleted") }
+                Button("Delete", role: .destructive) { store.deleteStateFile() }
             }
             Divider()
             SchemaPane(section: .advanced)

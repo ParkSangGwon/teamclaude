@@ -63,7 +63,7 @@ public enum ProxyLocator {
         return CLILocation(node: nil, entry: URL(fileURLWithPath: expanded), environment: [:], source: .manual)
     }
 
-    /// LaunchAgent plist → login shell → manual override. Runs the shell (5 s) only when needed.
+    /// Manual override → LaunchAgent plist → login shell. Runs the shell (5 s) only when needed.
     public static func resolve(manualOverride: String? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> CLILocation? {
         if let manual = manualOverride, let loc = fromManualPath(manual) { return loc }
         if let loc = fromLaunchAgent(plist: launchAgentPath(home: home)) { return loc }
@@ -79,10 +79,9 @@ public enum ProxyLocator {
         p.standardOutput = pipe
         p.standardError = FileHandle.nullDevice
         try p.run()
-        let deadline = Date().addingTimeInterval(timeout)
-        while p.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        // A bounded read: an rc file that backgrounds a child keeps the pipe's write end open past the shell's exit.
+        let data = CLIRunner.drain(pipe.fileHandleForReading, within: timeout)
         if p.isRunning { p.terminate() }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         return String(decoding: data, as: UTF8.self)
     }
 }

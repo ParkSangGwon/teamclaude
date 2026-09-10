@@ -5,7 +5,7 @@ import Foundation
 /// asks the registry and compares against the CLI's reported version.
 public enum UpdateCheck {
     public static let packageName = "@karpeleslab/teamclaude"
-    public static let registryURL = URL(string: "https://registry.npmjs.org/@karpeleslab/teamclaude/latest")!
+    public static let registryURL = URL(string: "https://registry.npmjs.org/\(packageName)/latest")!
 
     public static func parseLatest(_ data: Data) -> String? {
         guard let json = try? JSON.parse(data), let v = json["version"].string, !v.isEmpty else { return nil }

@@ -30,21 +30,41 @@ public struct ConfigFile: Sendable, Equatable {
         return URL(fileURLWithPath: p.hasSuffix(".json") ? String(p.dropLast(5)) + ".state.json" : p + ".state")
     }
 
+    /// Identity of the bytes a read saw: the server's atomic rename changes the
+    /// inode as well as the mtime, so a swap between two stats cannot hide.
+    public struct Version: Sendable, Equatable {
+        public var modified: Date
+        public var size: UInt64
+        public var inode: UInt64
+    }
+
     public struct Loaded: Sendable {
         public var root: JSON
-        public var modified: Date
+        public var version: Version
     }
 
     public func load() throws -> Loaded {
-        let data: Data
-        do { data = try Data(contentsOf: path) } catch { throw ConfigError.notFound(path.path) }
-        let json = try JSON.parse(data)
-        guard json.object != nil else { throw ConfigError.notObject }
-        return Loaded(root: json, modified: modificationDate())
+        // stat, read, stat: a rename between the two stats means the bytes belong to neither and the read is retried.
+        var before = version()
+        var data: Data
+        for _ in 0..<3 {
+            do { data = try Data(contentsOf: path) } catch { throw ConfigError.notFound(path.path) }
+            let after = version()
+            if after == before {
+                let json = try JSON.parse(data)
+                guard json.object != nil else { throw ConfigError.notObject }
+                return Loaded(root: json, version: after)
+            }
+            before = after
+        }
+        throw ConfigError.changedUnderneath
     }
 
-    func modificationDate() -> Date {
-        (try? FileManager.default.attributesOfItem(atPath: path.path)[.modificationDate] as? Date) ?? .distantPast
+    func version() -> Version {
+        var st = stat()
+        guard stat(path.path, &st) == 0 else { return Version(modified: .distantPast, size: 0, inode: 0) }
+        let modified = Date(timeIntervalSince1970: Double(st.st_mtimespec.tv_sec) + Double(st.st_mtimespec.tv_nsec) / 1e9)
+        return Version(modified: modified, size: UInt64(st.st_size), inode: UInt64(st.st_ino))
     }
 
     /// Read → mutate → write, retried when another writer landed in between.
@@ -52,10 +72,11 @@ public struct ConfigFile: Sendable, Equatable {
     public func update(attempts: Int = 3, _ mutate: (inout JSON) throws -> Void) throws -> JSON {
         var lastError: Error = ConfigError.changedUnderneath
         for _ in 0..<max(1, attempts) {
-            let loaded = try load()
+            let loaded: Loaded
+            do { loaded = try load() } catch ConfigError.changedUnderneath { lastError = ConfigError.changedUnderneath; continue }
             var root = loaded.root
             try mutate(&root)
-            if modificationDate() != loaded.modified { lastError = ConfigError.changedUnderneath; continue }
+            if version() != loaded.version { lastError = ConfigError.changedUnderneath; continue }
             try write(root)
             return root
         }
@@ -104,22 +125,41 @@ public struct ConfigFile: Sendable, Equatable {
     }
 
     public static func value(_ root: JSON, path: [String]) -> JSON {
-        var cur = root
-        for key in path { cur = cur[key] }
-        return cur
+        path.reduce(root) { $0[$1] }
     }
 
-    /// Index of the account row for `name` (matching `id` first when given).
-    public static func accountIndex(_ root: JSON, name: String, id: String? = nil) -> Int? {
+    public enum AccountMatch: Sendable, Equatable {
+        case index(Int)
+        case notFound
+        /// The same name in more than one organization: the caller has to say which (`--org`).
+        case ambiguous
+    }
+
+    /// The account row for `name`: `id` wins when given, then the name, narrowed by
+    /// `org` (uuid or display name) the way the CLI's `--org` does.
+    public static func matchAccount(_ root: JSON, name: String, id: String? = nil, org: String? = nil) -> AccountMatch {
         let rows = root["accounts"].array ?? []
-        if let id, let i = rows.firstIndex(where: { $0["id"].string == id }) { return i }
-        return rows.firstIndex { $0["name"].string == name }
+        if let id, let i = rows.firstIndex(where: { $0["id"].string == id }) { return .index(i) }
+        let hits = rows.indices.filter {
+            rows[$0]["name"].string == name && (org == nil || rows[$0]["orgUuid"].string == org || rows[$0]["orgName"].string == org)
+        }
+        switch hits.count {
+        case 0: return .notFound
+        case 1: return .index(hits[0])
+        default: return .ambiguous
+        }
+    }
+
+    /// Index of the account row for `name` (matching `id` first when given); nil when missing or ambiguous.
+    public static func accountIndex(_ root: JSON, name: String, id: String? = nil, org: String? = nil) -> Int? {
+        if case .index(let i) = matchAccount(root, name: name, id: id, org: org) { return i }
+        return nil
     }
 
     /// Patch one key on one account row; token fields are never touched.
-    public static func patchAccount(_ root: inout JSON, name: String, id: String? = nil, key: String, value: JSON?) -> Bool {
+    public static func patchAccount(_ root: inout JSON, name: String, id: String? = nil, org: String? = nil, key: String, value: JSON?) -> Bool {
         let forbidden: Set<String> = ["accessToken", "refreshToken", "apiKey", "expiresAt"]
-        guard !forbidden.contains(key), let i = accountIndex(root, name: name, id: id), var rows = root["accounts"].array else { return false }
+        guard !forbidden.contains(key), let i = accountIndex(root, name: name, id: id, org: org), var rows = root["accounts"].array else { return false }
         var row = rows[i].object ?? [:]
         if let value { row[key] = value } else { row.removeValue(forKey: key) }
         rows[i] = .object(row)

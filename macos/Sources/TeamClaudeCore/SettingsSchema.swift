@@ -95,7 +95,7 @@ public enum SettingsSchema {
     public static let fields: [SettingField] = [
         // Rotation
         SettingField("switchThreshold", .rotation, "Switch threshold", "Utilization at which rotation leaves an account. Reported OAuth utilization arrives in whole percents; tenths only matter for API-key accounts.", .double(min: 1, max: 100, step: 1, unit: "%"), .live, cli: true),
-        SettingField("switchThresholds", .rotation, "Per-bucket thresholds", "Override the threshold for one bucket; a missing bucket uses the scalar.", .keyedNumbers(keys: Buckets.all), .live, cli: true),
+        SettingField("switchThresholds", .rotation, "Per-bucket thresholds", "Override the threshold for one bucket; a missing bucket uses `default` (the scalar above).", .keyedNumbers(keys: ["default"] + Buckets.all), .live, cli: true),
         SettingField("distributeSessions", .rotation, "Session distribution", "Off: quota-driven rotation only. On: pin each new session to an equal-priority account for cache reuse. Adaptive: concentrate on the least remaining weekly credit.", .picker(["off", "on", "adaptive"]), .live, cli: true),
         SettingField("expiryRouting.enabled", .rotation, "Expiry-pressure routing", "Prefer accounts whose governing weekly quota is ample and resets soonest. The key name is provisional (#176).", .toggle, .live),
         SettingField("expiryRouting.tolerance", .rotation, "Expiry tolerance", "How much more remaining quota an account needs before it is preferred.", .double(min: 1, max: nil, step: 0.1, unit: nil), .live),

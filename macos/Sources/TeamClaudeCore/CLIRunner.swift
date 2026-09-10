@@ -41,20 +41,48 @@ public enum OutputLine: Sendable, Equatable {
     public var text: String { switch self { case .out(let s), .err(let s): return s } }
 }
 
+/// The child's stdin, kept open so a line can be sent after launch: `login --token`
+/// prints its URL first and only then waits for the pasted code.
+public final class StdinWriter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handle: FileHandle?
+    private var closed = false
+
+    public init() {}
+
+    func attach(_ h: FileHandle) {
+        lock.lock(); defer { lock.unlock() }
+        if closed { try? h.close() } else { handle = h }
+    }
+
+    /// Writes one line; a child that already exited (EPIPE) is not an error here.
+    public func send(_ line: String) {
+        lock.lock(); let h = handle; lock.unlock()
+        try? h?.write(contentsOf: Data((line + "\n").utf8))
+    }
+
+    public func close() {
+        lock.lock(); let h = handle; handle = nil; closed = true; lock.unlock()
+        try? h?.close()
+    }
+}
+
 /// Runs `teamclaude <args>` as a child process. Both pipes are drained
 /// concurrently (a full 64 KiB pipe would otherwise deadlock the child), stdin is
-/// fed once and closed, and a timeout or task cancellation sends SIGTERM then
-/// SIGKILL. Output lines can be streamed to a sheet as they arrive.
+/// fed once and closed (or handed to a `StdinWriter`), and a timeout or task
+/// cancellation sends SIGTERM then SIGKILL. Output lines can be streamed to a
+/// sheet as they arrive.
 public actor CLIRunner {
     public let location: CLILocation?
 
     public init(location: CLILocation?) { self.location = location }
 
-    public func run(_ args: [String], stdin: String? = nil, timeout: TimeInterval = 30,
+    public func run(_ args: [String], stdin: String? = nil, stdinWriter: StdinWriter? = nil, timeout: TimeInterval = 30,
                     onLine: (@Sendable (OutputLine) -> Void)? = nil) async throws -> CLIResult {
         guard let location else { throw CLIError.notFound }
         return try await CLIRunner.execute(executable: location.executable, arguments: location.leadingArguments + args,
-                                           environment: CLIRunner.environment(for: location), stdin: stdin, timeout: timeout, onLine: onLine)
+                                           environment: CLIRunner.environment(for: location), stdin: stdin, stdinWriter: stdinWriter,
+                                           timeout: timeout, onLine: onLine)
     }
 
     /// The child's environment: the LaunchAgent's PATH/config when known, and never an npm self-update.
@@ -69,7 +97,8 @@ public actor CLIRunner {
     }
 
     public static func execute(executable: URL, arguments: [String], environment: [String: String], stdin: String? = nil,
-                               timeout: TimeInterval = 30, onLine: (@Sendable (OutputLine) -> Void)? = nil) async throws -> CLIResult {
+                               stdinWriter: StdinWriter? = nil, timeout: TimeInterval = 30,
+                               onLine: (@Sendable (OutputLine) -> Void)? = nil) async throws -> CLIResult {
         let box = ProcessBox()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<CLIResult, Error>) in
@@ -82,13 +111,22 @@ public actor CLIRunner {
                 process.standardError = errPipe
                 process.standardInput = inPipe
                 let collector = OutputCollector(onLine: onLine)
-                outPipe.fileHandleForReading.readabilityHandler = { h in collector.feed(h.availableData, err: false) }
-                errPipe.fileHandleForReading.readabilityHandler = { h in collector.feed(h.availableData, err: true) }
+                // At EOF the handler would otherwise spin with empty reads until the process is reaped.
+                outPipe.fileHandleForReading.readabilityHandler = { h in
+                    let d = h.availableData
+                    if d.isEmpty { h.readabilityHandler = nil } else { collector.feed(d, err: false) }
+                }
+                errPipe.fileHandleForReading.readabilityHandler = { h in
+                    let d = h.availableData
+                    if d.isEmpty { h.readabilityHandler = nil } else { collector.feed(d, err: true) }
+                }
                 process.terminationHandler = { p in
                     outPipe.fileHandleForReading.readabilityHandler = nil
                     errPipe.fileHandleForReading.readabilityHandler = nil
-                    collector.feed(outPipe.fileHandleForReading.readDataToEndOfFile(), err: false)
-                    collector.feed(errPipe.fileHandleForReading.readDataToEndOfFile(), err: true)
+                    stdinWriter?.close()
+                    // Bounded: a grandchild that inherited the pipe (npm under `update`) must not hold the result hostage.
+                    collector.feed(CLIRunner.drain(outPipe.fileHandleForReading, within: 1), err: false)
+                    collector.feed(CLIRunner.drain(errPipe.fileHandleForReading, within: 1), err: true)
                     collector.flush()
                     let (out, err) = collector.snapshot()
                     let timedOut = box.finish()
@@ -99,15 +137,39 @@ public actor CLIRunner {
                     return
                 }
                 box.set(process)
+                if Task.isCancelled { box.kill() }
+                // A child that exits before reading its stdin must not take the app down with SIGPIPE.
+                let writer = inPipe.fileHandleForWriting
+                _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
                 if let stdin {
-                    inPipe.fileHandleForWriting.write(Data((stdin + "\n").utf8))
+                    try? writer.write(contentsOf: Data((stdin + "\n").utf8))
                 }
-                try? inPipe.fileHandleForWriting.close()
+                if let stdinWriter { stdinWriter.attach(writer) } else { try? writer.close() }
                 box.armTimeout(timeout)
             }
         } onCancel: {
             box.kill()
         }
+    }
+}
+
+extension CLIRunner {
+    /// Read what is left on a pipe, giving up at the deadline instead of waiting for EOF.
+    static func drain(_ handle: FileHandle, within seconds: TimeInterval) -> Data {
+        var out = Data()
+        var buf = [UInt8](repeating: 0, count: 64 * 1024)
+        let deadline = Date().addingTimeInterval(seconds)
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 { break }
+            var pfd = pollfd(fd: handle.fileDescriptor, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&pfd, 1, Int32(remaining * 1000))
+            if ready <= 0 { break }
+            let n = read(handle.fileDescriptor, &buf, buf.count)
+            if n <= 0 { break }
+            out.append(buf, count: n)
+        }
+        return out
     }
 }
 

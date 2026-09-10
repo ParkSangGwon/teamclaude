@@ -42,9 +42,9 @@ final class DerivedTests: XCTestCase {
 
     func testRawLevelAndElapsedFraction() {
         XCTAssertEqual(Derived.rawLevel(0.69), .green)
-        XCTAssertEqual(Derived.rawLevel(0.7), .orange)
+        XCTAssertEqual(Derived.rawLevel(0.7), .yellow, "the TUI's no-window fallback: green / yellow / red")
         XCTAssertEqual(Derived.rawLevel(0.9), .red)
-        XCTAssertEqual(Derived.rawLevel(0.5, warn: 0.4, critical: 0.6), .orange)
+        XCTAssertEqual(Derived.rawLevel(0.5, warn: 0.4, critical: 0.6), .yellow)
         XCTAssertNil(Derived.elapsedFraction(resetAt: nil, window: Window.fiveHour, now: now))
         XCTAssertEqual(Derived.elapsedFraction(resetAt: now.addingTimeInterval(Window.fiveHour / 4), window: Window.fiveHour, now: now), 0.75)
         XCTAssertEqual(Derived.elapsedFraction(resetAt: now.addingTimeInterval(-1), window: Window.fiveHour, now: now), 1)

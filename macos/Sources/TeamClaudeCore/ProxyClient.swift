@@ -163,6 +163,11 @@ public actor ProxyClient {
         }
     }
 
+    /// Blocking socket I/O stays off the cooperative pool: a stalled proxy can hold a
+    /// call for the connect timeout plus the read timeout, and the pool is only as
+    /// wide as the core count.
+    private static let ioQueue = DispatchQueue(label: "teamclaude.socket-http", qos: .userInitiated, attributes: .concurrent)
+
     private func sendOverSocket(_ req: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let ep = endpoint
         let method = req.httpMethod ?? "GET"
@@ -170,11 +175,13 @@ public actor ProxyClient {
         let headers = req.allHTTPHeaderFields ?? [:]
         let body = req.httpBody
         let timeout = req.timeoutInterval > 0 ? req.timeoutInterval : 5
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<SocketHTTP.Response, SocketHTTP.Failure> in
-            do { return .success(try SocketHTTP.request(host: ep.host, port: ep.port, method: method, path: path, headers: headers, body: body, timeout: timeout, maxBody: ProxyClient.maxReplyBytes)) }
-            catch let f as SocketHTTP.Failure { return .failure(f) }
-            catch { return .failure(.io(error.localizedDescription)) }
-        }.value
+        let result: Result<SocketHTTP.Response, SocketHTTP.Failure> = await withCheckedContinuation { cont in
+            ProxyClient.ioQueue.async {
+                do { cont.resume(returning: .success(try SocketHTTP.request(host: ep.host, port: ep.port, method: method, path: path, headers: headers, body: body, timeout: timeout, maxBody: ProxyClient.maxReplyBytes))) }
+                catch let f as SocketHTTP.Failure { cont.resume(returning: .failure(f)) }
+                catch { cont.resume(returning: .failure(.io(error.localizedDescription))) }
+            }
+        }
         switch result {
         case .success(let r):
             guard let http = HTTPURLResponse(url: req.url!, statusCode: r.status, httpVersion: "HTTP/1.1", headerFields: r.headers) else {

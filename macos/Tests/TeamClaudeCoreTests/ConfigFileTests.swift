@@ -49,7 +49,9 @@ final class ConfigFileTests: XCTestCase {
         XCTAssertEqual(loaded.root["switchThreshold"]["unified7dFable"].double, 0.9)
         XCTAssertEqual(loaded.root["accounts"].array?.count, 4)
         XCTAssertEqual(loaded.root["accounts"][1]["id"].string, "acct-2")
-        XCTAssertEqual(loaded.modified, try attributes(path)[.modificationDate] as? Date)
+        XCTAssertEqual(loaded.version.modified.timeIntervalSince1970, (try attributes(path)[.modificationDate] as? Date)?.timeIntervalSince1970 ?? -1, accuracy: 0.001)
+        XCTAssertEqual(loaded.version.size, UInt64(try Data(contentsOf: path).count))
+        XCTAssertNotEqual(loaded.version.inode, 0)
     }
 
     func testLoadErrors() throws {
@@ -168,6 +170,26 @@ final class ConfigFileTests: XCTestCase {
         try ConfigFile(path: nested).write(.object(["proxy": .object(["port": .number(4000)])]))
         XCTAssertEqual(try read(nested)["proxy"]["port"].int, 4000)
         XCTAssertEqual(try attributes(nested)[.posixPermissions] as? Int, 0o600)
+    }
+
+    func testWriteFailureLeavesTheFileAndNoTempBehind() throws {
+        let original = try Data(contentsOf: path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path) }
+        XCTAssertThrowsError(try ConfigFile(path: path).update { ConfigFile.patch(&$0, path: ["holdSeconds"], value: .number(1)) }) { error in
+            guard case .some(.write) = error as? ConfigError else { return XCTFail("\(error)") }
+        }
+        XCTAssertEqual(try Data(contentsOf: path), original)
+        XCTAssertEqual(try entries(), ["teamclaude.json"], "the temp file is unlinked on failure")
+
+        // The target being a directory makes the rename fail after the temp file was written.
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+        let asDir = dir.appending(path: "dir.json")
+        try FileManager.default.createDirectory(at: asDir, withIntermediateDirectories: false)
+        XCTAssertThrowsError(try ConfigFile(path: asDir).write(.object([:]))) { error in
+            guard case .some(.write) = error as? ConfigError else { return XCTFail("\(error)") }
+        }
+        XCTAssertEqual(try entries(), ["dir.json", "teamclaude.json"])
     }
 
     func testUpdateThrowsWhenTheFileChangesUnderneath() throws {

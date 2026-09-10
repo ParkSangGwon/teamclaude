@@ -48,11 +48,10 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertEqual(at92[0].title, "Fleet 5-hour usage at 92%")
         XCTAssertEqual(at92[0].body, "2 accounts weighted by tier · next reset in 3h")
         XCTAssertFalse(at92[0].sound)
-        let windowId = Int(now.addingTimeInterval(3 * 3600).timeIntervalSince1970)
-        XCTAssertEqual(at92[0].id, "fleet.5h.90.\(windowId)")
+        XCTAssertEqual(at92[0].id, "fleet.5h.90", "one id per metric and level, so a later window replaces the delivered notification")
         XCTAssertEqual(evaluate(status: healthy(), quota: fleet(0.92)), [])
         let at96 = evaluate(status: healthy(), quota: fleet(0.96))
-        XCTAssertEqual(at96.map(\.id), ["fleet.5h.95.\(windowId)"])
+        XCTAssertEqual(at96.map(\.id), ["fleet.5h.95"])
         XCTAssertEqual(at96[0].title, "Fleet 5-hour usage at 96%")
         XCTAssertEqual(evaluate(status: healthy(), quota: fleet(0.96)), [])
         XCTAssertEqual(evaluate(status: healthy(), quota: fleet(0.99)), [])
@@ -63,7 +62,7 @@ final class AlertEngineTests: XCTestCase {
         evaluate(status: healthy(), quota: q(0.5))
         let fired = evaluate(status: healthy(), quota: q(0.91))
         XCTAssertEqual(fired.map(\.title), ["Fleet weekly usage at 91%"])
-        XCTAssertTrue(fired[0].id.hasPrefix("fleet.7d.90."))
+        XCTAssertEqual(fired[0].id, "fleet.7d.90")
         prefs.fleetWeekly = false
         state = AlertState()
         evaluate(status: healthy(), quota: q(0.5))
@@ -94,14 +93,31 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertEqual(evaluate(status: healthy(), quota: fleet(0.95)).map(\.title), ["Fleet 5-hour usage at 95%"])
     }
 
-    func testChangedResetReArmsEverything() {
+    func testAnotherAccountsResetDoesNotReFireAboveTheBand() {
+        // The aggregate's next reset moves whenever any one account's window turns over;
+        // only the hysteresis band re-arms a level, so a fleet still at 96% stays quiet.
         evaluate(status: healthy(), quota: fleet(0.96))
         XCTAssertEqual(evaluate(status: healthy(), quota: fleet(0.96)), [])
         let nextWindow = now.addingTimeInterval(8 * 3600)
-        let fired = evaluate(status: healthy(), quota: fleet(0.96, reset: nextWindow))
-        XCTAssertEqual(fired.map(\.title), ["Fleet 5-hour usage at 96%", "Fleet 5-hour usage at 96%"])
-        XCTAssertEqual(fired.map(\.id), ["fleet.5h.90.\(Int(nextWindow.timeIntervalSince1970))", "fleet.5h.95.\(Int(nextWindow.timeIntervalSince1970))"])
-        XCTAssertEqual(state.windowIds["fleet.5h"], nextWindow.timeIntervalSince1970)
+        XCTAssertEqual(evaluate(status: healthy(), quota: fleet(0.96, reset: nextWindow)), [])
+        XCTAssertEqual(state.fired["fleet.5h"], [90, 95])
+        // A real reset drops usage through the band and the next climb announces again.
+        XCTAssertEqual(evaluate(status: healthy(), quota: fleet(0.10, reset: nextWindow)), [])
+        XCTAssertEqual(state.fired["fleet.5h"], [])
+        XCTAssertEqual(evaluate(status: healthy(), quota: fleet(0.91, reset: nextWindow)).map(\.id), ["fleet.5h.90"])
+    }
+
+    func testAlertStateDecodesAnOlderShapeWithDefaults() throws {
+        // A blob from a build before `spendSeen` existed must not throw the whole state away.
+        let older = Data(#"{"seeded":true,"fired":{"fleet.5h":[90,95]},"windowIds":{"fleet.5h":1},"allOut":false,"errorAccounts":[],"downStreak":0,"announcedDown":false}"#.utf8)
+        let s = try JSONDecoder().decode(AlertState.self, from: older)
+        XCTAssertTrue(s.seeded)
+        XCTAssertEqual(s.fired["fleet.5h"], [90, 95])
+        XCTAssertEqual(s.spendSeen, [])
+        let p = try JSONDecoder().decode(AlertPrefs.self, from: Data(#"{"levels":[80]}"#.utf8))
+        XCTAssertEqual(p.levels, [80])
+        XCTAssertTrue(p.spend)
+        XCTAssertNil(p.pausedUntil)
     }
 
     func testFleetWithoutAggregateOrUtilizationIsIgnored() {
@@ -265,7 +281,6 @@ final class AlertEngineTests: XCTestCase {
         var s = AlertState()
         s.seeded = true
         s.fired = ["fleet.5h": [90, 95], "fleet.7d": []]
-        s.windowIds = ["fleet.5h": 1788970200]
         s.lastCurrent = "alice@example.com"
         s.allOut = true
         s.errorAccounts = ["bob"]

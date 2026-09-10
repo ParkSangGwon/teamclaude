@@ -9,7 +9,13 @@ final class LiveProxyIntegrationTests: XCTestCase {
     var tmp: URL!
 
     override func tearDown() {
-        server?.terminate()
+        // Wait for the exit: the server still holds the port and writes its state file into `tmp` until then.
+        if let server, server.isRunning {
+            server.terminate()
+            let deadline = Date().addingTimeInterval(5)
+            while server.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+            if server.isRunning { kill(server.processIdentifier, SIGKILL); server.waitUntilExit() }
+        }
         server = nil
         if let tmp { try? FileManager.default.removeItem(at: tmp) }
         super.tearDown()
@@ -119,10 +125,12 @@ final class LiveProxyIntegrationTests: XCTestCase {
         let withoutRoute = try await client.status()
         XCTAssertFalse(withoutRoute.routes.contains { $0.name == "it-route" })
 
-        let j = try await ops.apply(.json(path: ["sessionTitles", "enabled"], value: .bool(true), applies: .live))
+        // A live JSON-only key; sessionDetail keeps the spawned proxy away from the real ~/.claude transcripts.
+        let j = try await ops.apply(.json(path: ["proxy", "sessionDetail"], value: .bool(true), applies: .live))
         XCTAssertEqual(j.via, "json")
         XCTAssertTrue(j.reloaded)
-        XCTAssertEqual(try file.load().root["sessionTitles"]["enabled"].bool, true)
+        XCTAssertEqual(try file.load().root["proxy"]["sessionDetail"].bool, true)
+        XCTAssertEqual(try file.load().root["proxy"]["apiKey"].string, "tc-it-key", "the sibling key survives a nested patch")
         // The token-bearing row survived every write untouched.
         XCTAssertEqual(try file.load().root["accounts"][0]["apiKey"].string, "sk-ant-api03-test")
 

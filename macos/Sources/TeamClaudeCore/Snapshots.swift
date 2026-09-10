@@ -457,7 +457,9 @@ public struct ReloadResult: Sendable, Equatable {
 /// Strings off the wire started life in an OAuth reply or a config file: drop
 /// control characters and cap the length before they reach a menu or a notification.
 public enum Text {
-    public static func safe(_ s: String) -> String { safe(s, max: 64) }
+    /// Identifiers (account names, targets) keep their full value: a truncated name
+    /// no longer matches the server, the CLI or the config. Views truncate at render time.
+    public static func safe(_ s: String) -> String { safe(s, max: 512) }
 
     public static func safe(_ s: String, max: Int) -> String {
         var out = ""

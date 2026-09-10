@@ -5,12 +5,49 @@ import TeamClaudeCore
 @main
 struct TeamClaudeBarApp {
     static func main() {
+        // Pipes to a child that exited and sockets to a proxy that went away must not take the app down.
+        signal(SIGPIPE, SIG_IGN)
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
         // Menu bar only: no Dock icon, no main window. Set here too so `swift run` behaves like the bundle.
         app.setActivationPolicy(.accessory)
+        app.mainMenu = mainMenu()
         app.run()
+    }
+
+    /// Never shown (LSUIElement), but key equivalents route through the main menu: without an
+    /// Edit menu ⌘C/⌘V/⌘A do nothing in the settings text fields, and ⌘W cannot close the window.
+    static func mainMenu() -> NSMenu {
+        let menu = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings), keyEquivalent: ",")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit TeamClaude Bar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        menu.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        menu.addItem(editItem)
+
+        let windowItem = NSMenuItem()
+        let window = NSMenu(title: "Window")
+        window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowItem.submenu = window
+        menu.addItem(windowItem)
+        return menu
     }
 }
 
@@ -58,12 +95,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func repositionStatusItem() {
         statusItem.closePopover()
         statusItem.remove()
+        StatusItemController.reseedPosition()
         statusItem = StatusItemController(store: store, openSettings: { [weak self] in self?.showSettings() })
     }
 
     @objc func showSettings() {
         statusItem.closePopover()
         if settings == nil { settings = SettingsWindowController(store: store) }
+        settings?.show()
+    }
+
+    @objc func showAccountsSettings() {
+        statusItem.closePopover()
+        settings = SettingsWindowController(store: store, section: .accounts)
         settings?.show()
     }
 }
