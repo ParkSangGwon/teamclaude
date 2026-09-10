@@ -280,19 +280,13 @@ struct PopoverView: View {
         }
     }
 
-    // MARK: accounts
+    // MARK: accounts (Ops-Board style table)
 
     @ViewBuilder
     private func accounts(_ status: StatusSnapshot, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             SectionHeader(title: "Accounts", trailing: status.sessions.map(Derived.formatSessions))
-            Card {
-                let list = status.accountsByPriority
-                ForEach(Array(list.enumerated()), id: \.element.name) { i, a in
-                    AccountRow(account: a, status: status, tier: store.quota?.account(named: a.name)?.tier, now: now)
-                    if i < list.count - 1 { Divider() }
-                }
-            }
+            AccountsTable(status: status, quota: store.quotaSupported ? store.quota : nil, now: now)
         }
     }
 
@@ -310,108 +304,3 @@ struct PopoverView: View {
     }
 }
 
-struct AccountRow: View {
-    @Environment(AppStore.self) private var store
-    var account: Account
-    var status: StatusSnapshot
-    var tier: Tier?
-    var now: Date
-    @Environment(\.snapshotMode) private var snapshotMode
-    @State private var priorityText = ""
-    @State private var askPriority = false
-    @State private var confirmRemove = false
-
-    var isCurrent: Bool { account.name == status.currentAccount }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 5) {
-                Image(systemName: "arrowtriangle.right.fill").font(.system(size: 8)).foregroundStyle(isCurrent ? Color.accentColor : Color.clear)
-                Text(store.compactName(account.name)).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle)
-                    .frame(minWidth: 64, alignment: .leading).layoutPriority(2)
-                    .help(account.name + (account.orgName.map { " · \($0)" } ?? ""))
-                Chip(text: Derived.tierBadge(tier)).fixedSize()
-                Chip(text: statusText + (account.sessions > 0 ? " · \(account.sessions) sess" : ""), color: statusColor).fixedSize()
-                if account.priority != 0 { Chip(text: "prio \(account.priority)").fixedSize() }
-                Spacer(minLength: 4)
-                if !isCurrent && !snapshotMode {
-                    Button("Switch") { store.switchTo(account.name) }.font(.system(size: 10)).buttonStyle(.bordered).controlSize(.mini).fixedSize()
-                }
-                if snapshotMode {
-                    Image(systemName: "ellipsis.circle").font(.system(size: 12)).foregroundStyle(.secondary)
-                } else {
-                Menu {
-                    Button(account.disabled ? "Enable" : "Disable") {
-                        Task { await store.apply(.enabled(account: account.name, org: nil, enabled: account.disabled), label: account.disabled ? "Enable \(account.name)" : "Disable \(account.name)") }
-                    }
-                    Button("Set priority…") { priorityText = String(account.priority); askPriority = true }
-                    Button("Move to top") { Task { await store.apply(.priority(account: account.name, org: nil, value: .first), label: "Priority of \(account.name)") } }
-                    Button("Move to bottom") { Task { await store.apply(.priority(account: account.name, org: nil, value: .last), label: "Priority of \(account.name)") } }
-                    Divider()
-                    Button("Copy name") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(account.name, forType: .string) }
-                    Button("Remove…", role: .destructive) { confirmRemove = true }
-                } label: { Image(systemName: "ellipsis.circle").font(.system(size: 12)) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                }
-            }
-            HStack(spacing: 6) {
-                if account.isApiKey {
-                    let t = account.quota.tokensLimit.flatMap { l in account.quota.tokensRemaining.map { 1 - $0 / l } }
-                    MiniBar(label: "Tok", ratio: t, level: t.map { Derived.rawLevel($0) } ?? .green, reset: Derived.formatReset(account.quota.resetsAt, now: now))
-                } else {
-                    MiniBar(label: "Ses", ratio: account.quota.unified5h, level: level(account.quota.unified5h, account.quota.unified5hReset, Window.fiveHour, Buckets.fiveHour), reset: Derived.formatReset(account.quota.unified5hReset, now: now))
-                    MiniBar(label: "Wk", ratio: account.quota.unified7d, level: level(account.quota.unified7d, account.quota.unified7dReset, Window.sevenDay, Buckets.weekly), reset: Derived.formatReset(account.quota.unified7dReset, now: now))
-                    if let f = account.quota.unified7dFable {
-                        MiniBar(label: "F7", ratio: f, level: level(f, account.quota.unified7dFableReset, Window.sevenDay, Buckets.fable), reset: nil)
-                    }
-                    if let s = account.quota.unified7dSonnet {
-                        MiniBar(label: "S7", ratio: s, level: level(s, account.quota.unified7dSonnetReset, Window.sevenDay, Buckets.sonnet), reset: nil)
-                    }
-                }
-            }
-            if let why = UnavailableText.label(account.unavailable) {
-                Chip(text: why + holdSuffix, color: account.unavailable == "error" || account.unavailable == "disabled" ? .red : .yellow)
-            }
-        }
-        .padding(.vertical, 2)
-        .alert("Priority for \(account.name)", isPresented: $askPriority) {
-            TextField("0", text: $priorityText)
-            Button("Set") { if let n = Int(priorityText) { Task { await store.apply(.priority(account: account.name, org: nil, value: .number(n)), label: "Priority of \(account.name)") } } }
-            Button("Cancel", role: .cancel) {}
-        } message: { Text("Lower is preferred. A strictly lower value preempts a healthy current account.") }
-        .confirmationDialog("Remove \(account.name)?", isPresented: $confirmRemove) {
-            Button("Remove", role: .destructive) { Task { await store.apply(.removeAccount(name: account.name, org: nil), label: "Remove \(account.name)") } }
-        } message: { Text("The account is removed from the config; the proxy keeps serving it until it restarts.") }
-    }
-
-    private func level(_ ratio: Double?, _ reset: Date?, _ window: TimeInterval, _ bucket: String) -> Level {
-        guard let ratio else { return .green }
-        return Derived.level(ratio: ratio, resetAt: reset, window: window, threshold: status.thresholdFor(bucket: bucket), now: now)
-    }
-
-    private var statusText: String {
-        if account.disabled { return "disabled" }
-        if account.status == "throttled", let until = account.rateLimitedUntil {
-            let r = Derived.formatReset(until, now: now)
-            return r.isEmpty ? "throttled" : "throttled +\(r)"
-        }
-        return account.status
-    }
-
-    private var statusColor: Color {
-        if account.disabled { return .secondary }
-        switch account.status {
-        case "active": return .green
-        case "throttled": return .yellow
-        default: return .red
-        }
-    }
-
-    private var holdSuffix: String {
-        if account.unavailable == "entitlement", let until = account.entitlementDeniedUntil {
-            let r = Derived.formatReset(until, now: now)
-            return r.isEmpty ? "" : " \(r)"
-        }
-        return ""
-    }
-}
