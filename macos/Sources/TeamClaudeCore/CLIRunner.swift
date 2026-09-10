@@ -121,6 +121,8 @@ public actor CLIRunner {
                     if d.isEmpty { h.readabilityHandler = nil } else { collector.feed(d, err: true) }
                 }
                 process.terminationHandler = { p in
+                    // Settle the verdict first: a timer firing during the drain below must not turn a clean exit into "timed out".
+                    let timedOut = box.finish()
                     outPipe.fileHandleForReading.readabilityHandler = nil
                     errPipe.fileHandleForReading.readabilityHandler = nil
                     stdinWriter?.close()
@@ -129,7 +131,6 @@ public actor CLIRunner {
                     collector.feed(CLIRunner.drain(errPipe.fileHandleForReading, within: 1), err: true)
                     collector.flush()
                     let (out, err) = collector.snapshot()
-                    let timedOut = box.finish()
                     cont.resume(returning: CLIResult(exitCode: p.terminationStatus, stdout: out, stderr: err, timedOut: timedOut))
                 }
                 do { try process.run() } catch {

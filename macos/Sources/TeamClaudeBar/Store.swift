@@ -58,6 +58,7 @@ final class AppStore {
     private var pollTask: Task<Void, Never>?
     private var pollInFlight = false
     private var pollAgain = false
+    private var updateCheckInFlight = false
     private var appSwitchedTo: (name: String, at: Date)?
     private var restartWatchUntil: Date?
     private var restartRequestedAt: Date?
@@ -118,8 +119,14 @@ final class AppStore {
         guard let root = try? file.load().root else { return }
         let s = ConfigFile.proxySettings(root)
         // The CLI's rule: a wildcard bind is not an address to dial, any other host is where the proxy actually is.
-        let host = (s.host == "0.0.0.0" || s.host == "::" || s.host.isEmpty) ? "127.0.0.1" : s.host
-        let ep = ProxyEndpoint(host: host, port: s.port, apiKey: s.apiKey)
+        var host = (s.host == "0.0.0.0" || s.host == "::" || s.host.isEmpty) ? "127.0.0.1" : s.host
+        var port = s.port
+        if !ProxyEndpoint.isValid(host: host, port: port) {
+            // A hand-edited value the app cannot dial must not become a crash loop; say so and use the defaults.
+            configError = "proxy.host/port in the config (\(s.host):\(s.port)) cannot be dialled; using 127.0.0.1:3456"
+            host = "127.0.0.1"; port = 3456
+        }
+        let ep = ProxyEndpoint(host: host, port: port, apiKey: s.apiKey)
         if ep != endpoint {
             endpoint = ep
             Task { await client.update(endpoint: ep) }
@@ -225,6 +232,21 @@ final class AppStore {
         let qr = await quotaTask.value
         applyQuota(qr)
         evaluateAlerts()
+        // The app runs for weeks: the once-a-day registry check has to happen from here, not only at launch.
+        if !updateCheckInFlight, prefs.lastUpdateCheck.map({ Date().timeIntervalSince($0) > 86_400 }) ?? true {
+            updateCheckInFlight = true
+            Task { await checkForUpdates(force: false); updateCheckInFlight = false }
+        }
+    }
+
+    /// True only while the restart the user asked for is still expected to land.
+    private var restartInProgress: Bool {
+        guard restartRequestedAt != nil, let until = restartWatchUntil else { return false }
+        if Date() < until { return true }
+        // The window passed without a restart being seen: from here on a missed poll is an outage again.
+        restartRequestedAt = nil
+        restartWatchUntil = nil
+        return false
     }
 
     private func applyStatus(_ sr: Result<StatusSnapshot, Error>) {
@@ -238,7 +260,8 @@ final class AppStore {
             connection = .up
             if wasDown { showToast(.ok, "Proxy is back") }
             // A `startedAt` later than the restart request is the restart, whether or not the proxy answered before it.
-            if let requested = restartRequestedAt, let started = s.server?.startedAt, started > requested {
+            // A server that reports no `startedAt` cannot be watched, so any answer after the request counts.
+            if let requested = restartRequestedAt, s.server?.startedAt.map({ $0 > requested }) ?? true {
                 restartRequestedAt = nil
                 restartWatchUntil = nil
                 restartPending.removeAll()
@@ -246,7 +269,9 @@ final class AppStore {
                 showToast(.ok, "Proxy restarted")
             }
             let prevTarget = previousStatus?.effectiveDefaultTarget
-            if let prev = prevTarget, let cur = s.effectiveDefaultTarget, prev != cur, appSwitchedTo?.name != cur {
+            // The same ten-second window the alert engine uses for "the app did this itself".
+            let justSwitchedTo = appSwitchedTo.flatMap { Date().timeIntervalSince($0.at) < 10 ? $0.name : nil }
+            if let prev = prevTarget, let cur = s.effectiveDefaultTarget, prev != cur, justSwitchedTo != cur {
                 rotatedAt = Date()
                 rotatedTo = cur
             }
@@ -255,11 +280,13 @@ final class AppStore {
             let err = (e as? ProxyError) ?? .badReply(e.localizedDescription)
             NSLog("[TeamClaudeBar] status poll failed: %@ (%@)", err.message, String(describing: e))
             // A restart the user asked for is expected to miss a few polls (launchd throttle, cold start); if the
-            // port changed in the config, the new one is where it comes back.
-            if restartRequestedAt != nil { reloadEndpoint(); return }
+            // port changed in the config, the new one is where it comes back. Only for the 30 s watch window.
+            if restartInProgress { reloadEndpoint(); return }
             // One missed poll is a blip (a busy proxy answers late); two in a row is down.
             if failureStreak >= 2 {
                 if case .down = connection {} else { connection = .down(since: Date(), error: err) }
+                // A port changed by hand and a restart the app did not request: the new address is in the file.
+                if case .unreachable = err { reloadEndpoint() }
             }
             if err == .unauthorized { reloadEndpoint() }
         }
@@ -285,8 +312,8 @@ final class AppStore {
     }
 
     private func evaluateAlerts() {
-        // While a restart is expected, a missed poll is not an outage.
-        let reachable = !isDown || restartRequestedAt != nil
+        // While a restart is expected (30 s), a missed poll is not an outage.
+        let reachable = !isDown || restartInProgress
         let inputs = AlertInputs(previous: previousStatus, status: status, quota: freshQuota, reachable: reachable,
                                  appSwitchedTo: appSwitchedTo.flatMap { Date().timeIntervalSince($0.at) < 10 ? $0.name : nil })
         let (alerts, state) = AlertEngine.evaluate(inputs, state: alertState, prefs: prefs.alertPrefs)
@@ -487,8 +514,11 @@ final class AppStore {
             await refreshServiceHealth()
             return
         }
-        guard owner.command.isEmpty || owner.command.contains("node") || owner.command.contains("teamclaude") else {
-            showToast(.error, "Port \(endpoint.port) is held by \(owner.command), not teamclaude — quit it yourself or change the port")
+        // lsof's command field is the bare (truncated) name: every Node process is "node". The argv says whether it is teamclaude.
+        let argv = (try? await CLIRunner.execute(executable: URL(fileURLWithPath: "/bin/ps"), arguments: ["-o", "command=", "-p", String(pid)],
+                                                 environment: ProcessInfo.processInfo.environment, timeout: 5))?.stdout ?? ""
+        guard argv.contains("teamclaude") else {
+            showToast(.error, "Port \(endpoint.port) is held by \(owner.command.isEmpty ? "pid \(pid)" : owner.command), not teamclaude — quit it yourself or change the port")
             return
         }
         if kill(pid_t(pid), SIGTERM) != 0 {

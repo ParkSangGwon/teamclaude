@@ -139,7 +139,7 @@ public enum Derived {
     /// status-renderer `formatPercent`: whole percent unless a tenth is meaningful.
     public static func formatPercent(_ value: Double?) -> String {
         guard let value, value.isFinite else { return "—" }
-        let pct = value * 100
+        let pct = min(1e6, max(-1e6, value * 100))
         if abs(pct - pct.rounded()) < 0.05 { return "\(Int(pct.rounded()))%" }
         return String(format: "%.1f%%", pct)
     }
@@ -148,6 +148,12 @@ public enum Derived {
     public static func percentInt(_ value: Double) -> Int {
         guard value.isFinite else { return 0 }
         return Int(min(1e6, max(-1e6, (value * 100).rounded())))
+    }
+
+    /// `Int(_:)` traps past ±9.2e18; anything that came over the wire or from a hand-edited config goes through here.
+    public static func safeInt(_ value: Double) -> Int {
+        guard value.isFinite else { return 0 }
+        return Int(min(1e15, max(-1e15, value.rounded())))
     }
 
     /// `1 - remaining/limit` for token and request pools; nil when the pool has no size.

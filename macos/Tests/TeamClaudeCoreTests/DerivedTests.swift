@@ -119,6 +119,13 @@ final class DerivedTests: XCTestCase {
     }
 
     func testFormatPercent() {
+        XCTAssertEqual(Derived.formatPercent(1e300), "1000000%", "a hostile ratio is clamped, never trapped")
+        XCTAssertEqual(Derived.formatPercent(-.infinity), "—")
+        XCTAssertEqual(Derived.percentInt(1e300), 1_000_000)
+        XCTAssertEqual(Derived.safeInt(1e300), 1_000_000_000_000_000)
+        XCTAssertEqual(Derived.safeInt(.nan), 0)
+        XCTAssertNil(Derived.usedFraction(remaining: 5, limit: 0))
+        XCTAssertEqual(Derived.usedFraction(remaining: 25, limit: 100), 0.75)
         XCTAssertEqual(Derived.formatPercent(0.5), "50%")
         XCTAssertEqual(Derived.formatPercent(0.984), "98.4%")
         XCTAssertEqual(Derived.formatPercent(0.105), "10.5%")

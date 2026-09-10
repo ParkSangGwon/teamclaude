@@ -9,8 +9,21 @@ public struct ProxyEndpoint: Sendable, Equatable {
         self.host = host; self.port = port; self.apiKey = apiKey
     }
 
-    public var baseURL: URL { URL(string: "http://\(host):\(port)")! }
+    /// `host` comes from the config: an IPv6 literal needs brackets, and a value that
+    /// is not a URL host at all must not trap the app on its first poll.
+    public var baseURL: URL {
+        let h = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
+        return URL(string: "http://\(h):\(port)") ?? URL(string: "http://127.0.0.1:3456")!
+    }
     public var label: String { "\(host):\(port)" }
+
+    /// Whether the config's host/port describe something that can be dialled.
+    public static func isValid(host: String, port: Int) -> Bool {
+        guard (1...65535).contains(port), !host.isEmpty else { return false }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-:[]_"))
+        guard host.unicodeScalars.allSatisfy(allowed.contains) else { return false }
+        return ProxyEndpoint(host: host, port: port).baseURL.host != nil
+    }
     public var dashboardURL: URL { baseURL.appending(path: "teamclaude/dashboard") }
 }
 

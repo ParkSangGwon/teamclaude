@@ -81,6 +81,14 @@ final class ProxyClientTests: XCTestCase {
         XCTAssertEqual(e.baseURL.absoluteString, "http://127.0.0.1:3456")
         XCTAssertEqual(e.label, "127.0.0.1:3456")
         XCTAssertEqual(e.dashboardURL.absoluteString, "http://127.0.0.1:3456/teamclaude/dashboard")
+        XCTAssertEqual(ProxyEndpoint(host: "::1", port: 4000).baseURL.absoluteString, "http://[::1]:4000", "an IPv6 literal from the config is bracketed")
+        XCTAssertEqual(ProxyEndpoint(host: "[::1]", port: 4000).baseURL.absoluteString, "http://[::1]:4000")
+        XCTAssertEqual(ProxyEndpoint(host: "not a host", port: 4000).baseURL.absoluteString, "http://127.0.0.1:3456", "a host that is not a URL falls back instead of trapping")
+        XCTAssertTrue(ProxyEndpoint.isValid(host: "::1", port: 3456))
+        XCTAssertTrue(ProxyEndpoint.isValid(host: "proxy.local", port: 65535))
+        XCTAssertFalse(ProxyEndpoint.isValid(host: "not a host", port: 3456))
+        XCTAssertFalse(ProxyEndpoint.isValid(host: "127.0.0.1", port: 0))
+        XCTAssertFalse(ProxyEndpoint.isValid(host: "", port: 3456))
         XCTAssertNil(e.apiKey)
     }
 

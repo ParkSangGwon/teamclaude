@@ -15,6 +15,7 @@ final class SettingsPlannerTests: XCTestCase {
         let table: [String: Double?] = ["unified7d": 90, "unified5h": nil]
         XCTAssertEqual(argv(.thresholdTable(table)), ["threshold", "unified5h=default", "unified7d=90"])
         XCTAssertEqual(argv(.thresholdTable(["unified7dFable": 87.5])), ["threshold", "unified7dFable=87.5"])
+        XCTAssertEqual(argv(.thresholdTable(["default": 90, "unified7d": nil])), ["threshold", "default=90", "unified7d=default"], "the CLI takes `default=<n>` but refuses `default=default`")
         XCTAssertNil(argv(.thresholdTable([:])))
     }
 

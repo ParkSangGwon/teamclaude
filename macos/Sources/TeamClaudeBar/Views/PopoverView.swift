@@ -172,8 +172,8 @@ struct PopoverView: View {
                 if a.isApiKey {
                     let tokens = Derived.usedFraction(remaining: a.quota.tokensRemaining, limit: a.quota.tokensLimit)
                     let requests = Derived.usedFraction(remaining: a.quota.requestsRemaining, limit: a.quota.requestsLimit)
-                    UsageRow(title: "Tokens", subtitle: a.quota.tokensLimit.map { "of \(Int($0))" }, tag: nil, ratio: tokens, resetAt: a.quota.resetsAt, window: nil, threshold: status.thresholdFor(bucket: "tokens"), cap: nil, resetStyle: store.prefs.resetStyle, now: now)
-                    UsageRow(title: "Requests", subtitle: a.quota.requestsLimit.map { "of \(Int($0))" }, tag: nil, ratio: requests, resetAt: a.quota.resetsAt, window: nil, threshold: status.thresholdFor(bucket: "requests"), cap: nil, resetStyle: store.prefs.resetStyle, now: now)
+                    UsageRow(title: "Tokens", subtitle: a.quota.tokensLimit.map { "of \(Derived.safeInt($0))" }, tag: nil, ratio: tokens, resetAt: a.quota.resetsAt, window: nil, threshold: status.thresholdFor(bucket: "tokens"), cap: nil, resetStyle: store.prefs.resetStyle, now: now)
+                    UsageRow(title: "Requests", subtitle: a.quota.requestsLimit.map { "of \(Derived.safeInt($0))" }, tag: nil, ratio: requests, resetAt: a.quota.resetsAt, window: nil, threshold: status.thresholdFor(bucket: "requests"), cap: nil, resetStyle: store.prefs.resetStyle, now: now)
                 } else if let backend = a.quota.backend {
                     UsageRow(title: backend.label, subtitle: backend.text, tag: nil, ratio: backend.utilization, resetAt: nil, window: nil, threshold: nil, cap: nil, resetStyle: store.prefs.resetStyle, now: now)
                 } else if a.quota.isEmpty {

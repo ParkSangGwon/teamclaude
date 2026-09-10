@@ -101,8 +101,8 @@ struct NumberEditor: View {
     }
 
     private func format(_ v: Double?) -> String {
-        guard let v else { return "" }
-        return integer || v == v.rounded() ? String(Int(v)) : String(v)
+        guard let v, v.isFinite else { return "" }
+        return integer || v == v.rounded() ? String(Derived.safeInt(v)) : String(v)
     }
 
     private func bump(_ delta: Double) {
@@ -164,7 +164,7 @@ struct SecretEditor: View {
         HStack(spacing: 8) {
             Text(masked).font(.system(size: 12, design: .monospaced)).foregroundStyle(value == nil ? .secondary : .primary)
             if let value, !value.isEmpty {
-                Button("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string) }.controlSize(.small)
+                Button("Copy") { Actions.copySecret(value) }.controlSize(.small)
             }
             Button(value == nil ? "Set…" : "Change…") { draft = ""; editing = true }.controlSize(.small)
             if canRegenerate { Button("Regenerate…") { confirmRegenerate = true }.controlSize(.small) }
@@ -340,6 +340,12 @@ struct SchemaPane: View {
         switch field.id {
         case "upstreamProxy":
             return value?.string.flatMap(SettingsValidation.upstreamProxy)
+        case "proxy.host":
+            guard let h = value?.string, !h.isEmpty else { return nil }
+            return ProxyEndpoint.isValid(host: h, port: 3456) ? nil : "Not a host name or address the app can dial"
+        case "proxy.port":
+            guard let p = value?.int else { return nil }
+            return (1...65535).contains(p) ? nil : "Port must be 1–65535"
         case "proxy.usageDimensions":
             let headers = (value?.array ?? []).compactMap { $0["header"].string?.lowercased() }
             if let reserved = headers.first(where: { SettingsValidation.reservedDimensionHeaders.contains($0) }) {
@@ -372,11 +378,11 @@ struct SchemaPane: View {
         case "switchThreshold":
             return .threshold(percent: value?.double ?? 98)
         case "switchThresholds":
+            // An empty bucket becomes `bucket=default` (drop the override); an empty `default` is simply
+            // not sent, since the CLI refuses `default=default` and keeps the scalar it has.
             var table: [String: Double?] = [:]
-            for key in ["default"] + Buckets.all { table[key] = value?[key].double.map { $0 * 100 } }
-            // `default=default` is refused by the CLI: with every override cleared, the plain scalar is the fallback.
-            if table.values.allSatisfy({ $0 == nil }) { return .threshold(percent: 98) }
-            if table["default"] == nil { table.removeValue(forKey: "default") }
+            for key in Buckets.all { table.updateValue(value?[key].double.map { $0 * 100 }, forKey: key) }
+            if let d = value?["default"].double { table["default"] = d * 100 }
             return .thresholdTable(table)
         case "distributeSessions":
             return .distribute(value?.string ?? "off")

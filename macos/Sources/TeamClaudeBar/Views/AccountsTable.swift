@@ -50,10 +50,10 @@ struct AccountsTable: View {
         HStack(spacing: Self.gap) {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Fleet total").font(.system(size: 11, weight: .bold))
-                Text("\(five.knownAccounts)/\(quota.accounts.count) · weight \(Int(five.capacityWeight))").font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
+                Text("\(five.knownAccounts)/\(quota.accounts.count) · weight \(Derived.safeInt(five.capacityWeight))").font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
             }
             .frame(width: Self.nameWidth, alignment: .leading)
-            .help("\(five.knownAccounts) of \(quota.accounts.count) accounts with a known tier; the fleet percentages are weighted by the tier weights (Max 20x = 20, Max 5x = 5, Pro = 1), which sum to \(Int(five.capacityWeight)).")
+            .help("\(five.knownAccounts) of \(quota.accounts.count) accounts with a known tier; the fleet percentages are weighted by the tier weights (Max 20x = 20, Max 5x = 5, Pro = 1), which sum to \(Derived.safeInt(five.capacityWeight)).")
             total(quota.aggregate["fiveHour"], threshold: status.thresholdFor(bucket: Buckets.fiveHour)).frame(width: Self.wideCol, alignment: .leading)
             total(quota.aggregate["weeklyShared"], threshold: status.thresholdFor(bucket: Buckets.weekly)).frame(width: Self.wideCol, alignment: .leading)
             familyTotal(quota, key: "weeklyFable", source: Buckets.fable, bucket: Buckets.fable).frame(width: Self.narrowCol, alignment: .leading)
