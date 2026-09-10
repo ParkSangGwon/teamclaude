@@ -4,6 +4,8 @@ public enum IconState: Sendable, Equatable {
     case normal, warning, critical
     case rotating(to: String)
     case proxyDown, noAccounts, stale
+    /// No answer yet and no failure either: the first poll is in flight.
+    case starting
 }
 
 public struct IconInputs: Sendable {
@@ -52,7 +54,7 @@ public enum MenuBarState {
                              tooltip: "TeamClaude proxy not reachable" + (age.map { " · last data \(Derived.formatDuration($0)) ago" } ?? ""), tag: nil)
         }
         guard let status = i.status else {
-            return IconModel(state: .proxyDown, fiveHour: nil, weekly: nil, label: "—", tooltip: "TeamClaude: waiting for the proxy", tag: nil)
+            return IconModel(state: .starting, fiveHour: nil, weekly: nil, label: nil, tooltip: "TeamClaude: connecting to the proxy…", tag: nil)
         }
         if status.accounts.isEmpty {
             return IconModel(state: .noAccounts, fiveHour: 0, weekly: 0, label: "0", tooltip: "No accounts configured — open Settings → Accounts", tag: nil)

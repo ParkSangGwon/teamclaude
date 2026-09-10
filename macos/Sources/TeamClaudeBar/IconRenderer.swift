@@ -12,10 +12,10 @@ enum IconRenderer {
 
     static func color(for state: IconState) -> NSColor {
         switch state {
-        case .normal, .rotating: return .systemGreen
-        case .warning: return .systemOrange
-        case .critical: return .systemRed
-        case .proxyDown, .stale, .noAccounts: return .secondaryLabelColor
+        case .normal, .rotating: return LevelColors.green
+        case .warning: return LevelColors.orange
+        case .critical: return LevelColors.red
+        case .proxyDown, .stale, .noAccounts, .starting: return .secondaryLabelColor
         }
     }
 
@@ -33,6 +33,7 @@ enum IconRenderer {
         }
         if case .rotating = model.state { text = model.label }
         if model.state == .proxyDown { text = style == .bars ? nil : "—" }
+        if model.state == .starting { text = nil }
 
         let image = showBars ? barsImage(model, monochrome: monochrome) : nil
         let attrs: [NSAttributedString.Key: Any] = [
@@ -49,7 +50,7 @@ enum IconRenderer {
         let size = NSSize(width: 20, height: hasTag ? 18 : 16)
         let image = NSImage(size: size, flipped: false) { rect in
             let fg: NSColor = monochrome ? .black : color(for: model.state)
-            let dim = model.state == .proxyDown || model.state == .stale
+            let dim = model.state == .proxyDown || model.state == .stale || model.state == .starting
             let trackAlpha: CGFloat = dim ? 0.22 : 0.28
             let fillAlpha: CGFloat = dim ? 0.4 : 1
             let barW: CGFloat = 16, barH: CGFloat = hasTag ? 2.5 : 3, x: CGFloat = 2

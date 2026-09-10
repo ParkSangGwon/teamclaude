@@ -45,7 +45,7 @@ struct SettingsRootView: View {
                         if let err = store.configError {
                             Banner(kind: .bad, text: "Config could not be read: \(err)")
                         }
-                        if !store.reachable {
+                        if store.isDown {
                             Banner(kind: .warn, text: "Proxy not reachable — edits are saved to the config and apply when the service starts.")
                         }
                         pane
@@ -178,6 +178,15 @@ struct GeneralPane: View {
                         Button("Pause for 1 hour") { alerts.pausedUntil = Date().addingTimeInterval(3600) }
                     }
                 }
+            }
+            group("teamclaude updates") {
+                HStack(spacing: 10) {
+                    Text("Installed \(store.serverVersion ?? "?") · latest \(store.latestVersion ?? "?")").font(.system(size: 12))
+                    Button("Check now") { Task { await store.checkForUpdates(force: true) } }.controlSize(.small)
+                    if store.updateAvailable { Button(store.updateRunning ? "Updating…" : "Update to \(store.latestVersion ?? "")") { Task { await store.runUpdate() } }.controlSize(.small).buttonStyle(.borderedProminent).disabled(store.updateRunning) }
+                }
+                if let note = store.updateNote { Text(note).font(.system(size: 11)).foregroundStyle(.secondary) }
+                Text("Runs `teamclaude update` (npm install -g). The proxy runs the new version after a restart; a git checkout is left alone.").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             group("About") {
                 Text("TeamClaude Bar \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "(dev)") · MIT").font(.system(size: 12)).foregroundStyle(.secondary)

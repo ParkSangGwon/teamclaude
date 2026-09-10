@@ -44,6 +44,9 @@ final class AppStore {
     var popoverOpen = false
     /// Informational banners the user closed this session.
     var dismissedNotices: Set<String> = []
+    private(set) var latestVersion: String?
+    private(set) var updateRunning = false
+    private(set) var updateNote: String?
     /// Bumped when an app preference changes so the icon re-renders (Preferences itself is not observable).
     var prefsVersion = 0
 
@@ -121,6 +124,58 @@ final class AppStore {
         if loc != nil, let r = try? await runner.run(["version"], timeout: 10), r.succeeded {
             serverVersion = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init)
         }
+        await checkForUpdates(force: false)
+    }
+
+    // MARK: - updates
+
+    var updateAvailable: Bool { UpdateCheck.isNewer(latest: latestVersion, installed: serverVersion) }
+
+    /// Ask npm once a day (or on demand) whether a newer teamclaude exists.
+    func checkForUpdates(force: Bool) async {
+        let key = "lastUpdateCheck"
+        if !force, let last = UserDefaults.standard.object(forKey: key) as? Date, Date().timeIntervalSince(last) < 86_400,
+           let cached = UserDefaults.standard.string(forKey: "latestVersion") {
+            latestVersion = cached
+            return
+        }
+        if let v = try? await UpdateCheck.fetchLatest() {
+            latestVersion = v
+            UserDefaults.standard.set(v, forKey: "latestVersion")
+            UserDefaults.standard.set(Date(), forKey: key)
+        }
+    }
+
+    /// `teamclaude update` (npm install -g) through the CLI, then flag the restart.
+    func runUpdate() async {
+        guard !updateRunning else { return }
+        updateRunning = true
+        updateNote = nil
+        showToast(.info, "Updating teamclaude…")
+        do {
+            let r = try await runner.run(["update"], timeout: 600)
+            let installed = UpdateCheck.installedVersion(fromUpdateOutput: r.stdout)
+            if r.succeeded, let installed {
+                serverVersion = installed
+                restartPending.insert("teamclaude \(installed)")
+                updateNote = "Updated to \(installed) — restart the proxy to run it"
+                showToast(.ok, updateNote!)
+            } else if r.succeeded {
+                updateNote = r.stdout.split(separator: "\n").last.map(String.init) ?? "Already up to date"
+                showToast(.info, updateNote!)
+                await checkForUpdates(force: true)
+            } else {
+                updateNote = r.failureMessage
+                showToast(.error, "Update failed: \(r.failureMessage)")
+            }
+        } catch let e as CLIError {
+            updateNote = e.message
+            showToast(.error, e.message)
+        } catch {
+            updateNote = error.localizedDescription
+            showToast(.error, error.localizedDescription)
+        }
+        updateRunning = false
     }
 
     // MARK: - polling
@@ -167,7 +222,10 @@ final class AppStore {
             failureStreak += 1
             let err = (e as? ProxyError) ?? .badReply(e.localizedDescription)
             NSLog("[TeamClaudeBar] status poll failed: %@ (%@)", err.message, String(describing: e))
-            if case .down = connection {} else { connection = .down(since: Date(), error: err) }
+            // One missed poll is a blip (a busy proxy answers late); two in a row is down.
+            if failureStreak >= 2 {
+                if case .down = connection {} else { connection = .down(since: Date(), error: err) }
+            }
             if err == .unauthorized { reloadEndpoint() }
         }
     }
@@ -184,7 +242,7 @@ final class AppStore {
     }
 
     private func evaluateAlerts() {
-        let reachable = { if case .up = connection { return true } else { return false } }()
+        let reachable = !isDown
         let inputs = AlertInputs(previous: previousStatus, status: status, quota: quota, reachable: reachable,
                                  appSwitchedTo: appSwitchedTo.flatMap { Date().timeIntervalSince($0.at) < 10 ? $0.name : nil })
         let (alerts, state) = AlertEngine.evaluate(inputs, state: prefs.alertState, prefs: prefs.alertPrefs)
@@ -193,9 +251,12 @@ final class AppStore {
     }
 
     var reachable: Bool { if case .up = connection { return true } else { return false } }
+    var isDown: Bool { if case .down = connection { return true } else { return false } }
+    var isStarting: Bool { if case .starting = connection { return true } else { return false } }
+    var consecutiveFailures: Int { failureStreak }
 
     var iconModel: IconModel {
-        MenuBarState.compute(IconInputs(status: status, quota: quotaSupported ? quota : nil, reachable: reachable, lastSuccessAt: lastSuccessAt,
+        MenuBarState.compute(IconInputs(status: status, quota: quotaSupported ? quota : nil, reachable: !isDown, lastSuccessAt: lastSuccessAt,
                                         pollInterval: popoverOpen ? prefs.pollOpen : prefs.pollClosed, rotatedAt: rotatedAt, rotatedTo: rotatedTo,
                                         pinCurrent: prefs.pinCurrent, showRemaining: prefs.showRemaining, warnLevel: prefs.warnLevel))
     }

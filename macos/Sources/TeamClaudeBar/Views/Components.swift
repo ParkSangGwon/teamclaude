@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import TeamClaudeCore
 
 /// True while rendering to PNG: AppKit-backed controls (Menu) draw as a placeholder there.
@@ -7,15 +8,34 @@ extension EnvironmentValues {
     var snapshotMode: Bool { get { self[SnapshotModeKey.self] } set { self[SnapshotModeKey.self] = newValue } }
 }
 
-extension Level {
-    var color: Color {
-        switch self {
-        case .green: return .green
-        case .yellow: return .yellow
-        case .orange: return .orange
-        case .red: return .red
+/// Severity colours that read on both appearances: deeper than the system
+/// greens/yellows in light mode (which wash out on the popover material),
+/// brighter in dark mode.
+enum LevelColors {
+    static func adaptive(light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let c = isDark ? dark : light
+            return NSColor(srgbRed: c.0, green: c.1, blue: c.2, alpha: 1)
         }
     }
+    static let green = adaptive(light: (0.10, 0.58, 0.29), dark: (0.29, 0.84, 0.44))
+    static let yellow = adaptive(light: (0.70, 0.50, 0.02), dark: (1.00, 0.84, 0.04))
+    static let orange = adaptive(light: (0.86, 0.42, 0.04), dark: (1.00, 0.62, 0.04))
+    static let red = adaptive(light: (0.82, 0.16, 0.14), dark: (1.00, 0.27, 0.23))
+
+    static func nsColor(for level: Level) -> NSColor {
+        switch level {
+        case .green: return green
+        case .yellow: return yellow
+        case .orange: return orange
+        case .red: return red
+        }
+    }
+}
+
+extension Level {
+    var color: Color { Color(nsColor: LevelColors.nsColor(for: self)) }
 }
 
 struct SectionHeader: View {
@@ -156,7 +176,12 @@ struct Banner: View {
     var onDismiss: (() -> Void)? = nil
 
     var color: Color {
-        switch kind { case .bad: return .red; case .warn: return .orange; case .info: return .blue; case .ok: return .green }
+        switch kind {
+        case .bad: return Level.red.color
+        case .warn: return Level.orange.color
+        case .info: return .blue
+        case .ok: return Level.green.color
+        }
     }
 
     var body: some View {

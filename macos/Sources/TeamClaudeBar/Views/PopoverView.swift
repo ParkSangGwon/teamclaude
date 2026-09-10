@@ -20,7 +20,7 @@ struct PopoverView: View {
                     if !rows.isEmpty { routing(rows, status: status) }
                     accounts(status, now: now)
                 } else {
-                    Text(store.reachable ? "Waiting for the first status…" : "The proxy is not reachable. Start it with `teamclaude service install` or `teamclaude server`.")
+                    Text(store.isDown ? "The proxy is not reachable. Start it with `teamclaude service install` or `teamclaude server`." : "Connecting to the proxy…")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Divider()
@@ -38,7 +38,7 @@ struct PopoverView: View {
     private func header(now: Date) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
-                Circle().fill(store.reachable ? Color.green : (store.status == nil ? Color.gray : Color.orange)).frame(width: 6, height: 6)
+                Circle().fill(store.isDown ? Level.orange.color : (store.status == nil ? Color.gray : Level.green.color)).frame(width: 6, height: 6)
                 accountMenu
                 Spacer()
                 Button { store.refreshNow() } label: { Image(systemName: "arrow.clockwise") }
@@ -119,7 +119,11 @@ struct PopoverView: View {
                 let target = status.effectiveDefaultTarget.map { " Requests go to \(store.displayName($0))." } ?? ""
                 out.append(Banner(kind: .warn, text: "Rotation cannot use \(store.displayName(cur.name)): \(why).\(target)"))
             }
-            if !status.hasDefaultTarget, store.status?.routes.isEmpty == false, !store.dismissedNotices.contains("skew") {
+            if store.updateAvailable, let latest = store.latestVersion, !store.dismissedNotices.contains("update-\(latest)") {
+                let text = store.updateRunning ? "Updating teamclaude to \(latest)…" : "teamclaude \(latest) is available (installed \(store.serverVersion ?? "?"))."
+                out.append(Banner(kind: .info, text: text, action: store.updateRunning ? nil : { Task { await store.runUpdate() } }, actionTitle: store.updateRunning ? nil : "Update",
+                                  onDismiss: { store.dismissedNotices.insert("update-\(latest)") }))
+            } else if !status.hasDefaultTarget, store.status?.routes.isEmpty == false, !store.dismissedNotices.contains("skew") {
                 out.append(Banner(kind: .info, text: "Proxy older than 1.1.18 — routing targets are estimated from the current account. `teamclaude update` clears this.",
                                   onDismiss: { store.dismissedNotices.insert("skew") }))
             }

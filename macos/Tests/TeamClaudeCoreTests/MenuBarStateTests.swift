@@ -42,10 +42,13 @@ final class MenuBarStateTests: XCTestCase {
         XCTAssertEqual(m.state, .normal)
     }
 
-    func testNoStatusYetIsProxyDown() {
+    func testNoStatusYetIsStartingNotDown() {
         let m = MenuBarState.compute(IconInputs(status: nil, quota: nil, reachable: true, lastSuccessAt: nil, now: now))
-        XCTAssertEqual(m.state, .proxyDown)
-        XCTAssertEqual(m.tooltip, "TeamClaude: waiting for the proxy")
+        XCTAssertEqual(m.state, .starting, "the first poll is in flight: not a failure yet")
+        XCTAssertNil(m.label)
+        XCTAssertEqual(m.tooltip, "TeamClaude: connecting to the proxy…")
+        let down = MenuBarState.compute(IconInputs(status: nil, quota: nil, reachable: false, lastSuccessAt: nil, now: now))
+        XCTAssertEqual(down.state, .proxyDown, "unreachable with nothing ever received is down")
     }
 
     func testEmptyAccounts() throws {

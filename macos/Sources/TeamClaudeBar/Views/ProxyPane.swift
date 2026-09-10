@@ -74,7 +74,7 @@ struct ProxyPane: View {
 
     private var connectionText: String {
         switch store.connection {
-        case .starting: return "connecting…"
+        case .starting: return store.consecutiveFailures > 0 ? "no answer yet — retrying…" : "connecting…"
         case .up: return "reachable" + (store.lastSuccessAt.map { " · updated \(Derived.formatDuration(Date().timeIntervalSince($0))) ago" } ?? "")
         case .down(let since, let e): return "\(e.message) (since \(since.formatted(date: .omitted, time: .shortened)))"
         }

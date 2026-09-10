@@ -126,7 +126,7 @@ struct AccountTableRow: View {
                     Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 8))
                     Text(why + holdSuffix).font(.system(size: 9)).lineLimit(1)
                 }
-                .foregroundStyle(account.unavailable == "error" || account.unavailable == "disabled" ? Color.red : Color.yellow)
+                .foregroundStyle(account.unavailable == "error" || account.unavailable == "disabled" ? Level.red.color : Level.yellow.color)
                 .padding(.leading, AccountsTable.nameWidth + AccountsTable.gap)
             }
         }
@@ -165,7 +165,7 @@ struct AccountTableRow: View {
             if let ratio {
                 let level = Derived.level(ratio: ratio, resetAt: reset, window: window, threshold: status.thresholdFor(bucket: bucket), now: now)
                 SegmentBar(ratio: ratio, level: level, segments: segments, width: width - 4)
-                Text(label(ratio, reset)).font(.system(size: 8.5, design: .monospaced)).foregroundStyle(level == .red ? Color.red : Color.secondary).lineLimit(1)
+                Text(label(ratio, reset)).font(.system(size: 8.5, design: .monospaced)).foregroundStyle(level == .red ? Level.red.color : Color.secondary).lineLimit(1)
             } else {
                 SegmentBar(ratio: 0, level: .green, segments: segments, width: width - 4)
                 Text("—").font(.system(size: 8.5, design: .monospaced)).foregroundStyle(.tertiary)
@@ -181,7 +181,7 @@ struct AccountTableRow: View {
             let level = Derived.level(ratio: ratio, resetAt: reset, window: Window.sevenDay, threshold: status.thresholdFor(bucket: bucket), now: now)
             VStack(alignment: .leading, spacing: 2) {
                 SegmentBar(ratio: ratio, level: level, segments: 6, width: AccountsTable.narrowCol - 4)
-                Text("\(Derived.percentInt(ratio))%").font(.system(size: 8.5, design: .monospaced)).foregroundStyle(level == .red ? Color.red : Color.secondary)
+                Text("\(Derived.percentInt(ratio))%").font(.system(size: 8.5, design: .monospaced)).foregroundStyle(level == .red ? Level.red.color : Color.secondary)
             }
             .frame(width: AccountsTable.narrowCol, alignment: .leading)
             .help("\(Derived.formatPercent(ratio)) · \(Derived.formatResetLong(reset, style: .both, now: now))")
@@ -218,8 +218,8 @@ struct AccountTableRow: View {
         if account.disabled { return .secondary }
         switch account.status {
         case "active": return .secondary
-        case "throttled": return .yellow
-        default: return .red
+        case "throttled": return Level.yellow.color
+        default: return Level.red.color
         }
     }
 
