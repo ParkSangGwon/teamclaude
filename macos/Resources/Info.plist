@@ -3,6 +3,14 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <!-- Declared here because the .lproj tables live in the SwiftPM resource bundle, which System
+       Settings → Language & Region does not look inside; this line is what lets a user pick a
+       per-app language there (Locale.preferredLanguages then reports it). -->
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string><string>ko</string><string>ja</string><string>zh-Hans</string>
+    <string>es</string><string>de</string><string>fr</string>
+  </array>
   <key>CFBundleExecutable</key><string>TeamClaudeBar</string>
   <key>CFBundleIdentifier</key><string>com.karpeleslab.teamclaudebar</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>

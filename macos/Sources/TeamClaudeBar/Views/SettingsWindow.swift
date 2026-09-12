@@ -65,7 +65,8 @@ struct SettingsRootView: View {
     }
 
     @ViewBuilder
-    private var pane: some View { SettingsPaneOnly(section: section) }
+    // `.id` remakes the pane on a language change, so panes that read nothing else from the store still relabel.
+    private var pane: some View { SettingsPaneOnly(section: section).id(store.prefs.language) }
 }
 
 /// One pane without the split view chrome (also what the snapshot mode renders).
@@ -137,7 +138,7 @@ struct GeneralPane: View {
                     Divider()
                     ForEach(L10n.supported) { Text($0.name).tag($0.code) }
                 }.frame(maxWidth: 300)
-                if let missing = L10n.supported.first(where: { $0.code == prefs.language }), !L10n.availableOnDisk().contains(missing.code) {
+                if L10n.translationMissing, let missing = L10n.supported.first(where: { $0.code == prefs.language }) {
                     Text(L("The translation for %@ is not in this build; showing English.", missing.name)).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
@@ -199,7 +200,7 @@ struct GeneralPane: View {
             }
             TitledGroup(title: L("About")) {
                 Text("TeamClaude Bar \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "(dev)") · MIT").font(.system(size: 12)).foregroundStyle(.secondary)
-                Link("KarpelesLab/teamclaude on GitHub", destination: URL(string: "https://github.com/KarpelesLab/teamclaude")!).font(.system(size: 12))
+                Link(L("%@ on GitHub", "KarpelesLab/teamclaude"), destination: URL(string: "https://github.com/KarpelesLab/teamclaude")!).font(.system(size: 12))
             }
         }
         .onAppear {

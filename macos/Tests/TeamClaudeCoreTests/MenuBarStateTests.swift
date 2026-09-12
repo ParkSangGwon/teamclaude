@@ -54,7 +54,7 @@ final class MenuBarStateTests: XCTestCase {
     func testEmptyAccounts() throws {
         let m = MenuBarState.compute(inputs(status: try Fixtures.status("status-empty.json")))
         XCTAssertEqual(m.state, .noAccounts)
-        XCTAssertEqual(m.label, "5h 0")
+        XCTAssertEqual(m.label, "5h 0%")
         XCTAssertEqual(m.fiveHour, 0)
         XCTAssertEqual(m.weekly, 0)
         XCTAssertTrue(m.tooltip.contains("No accounts configured"))

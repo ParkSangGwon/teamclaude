@@ -18,7 +18,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var lastModel: IconModel?
     private var lastStyle: Preferences.IconStyle?
     private var lastMono: Bool?
-    private var lastLanguage: String??
 
     static let autosaveName = "teamclaudeBar.main"
 
@@ -78,10 +77,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let model = store.iconModel
         let style = store.prefs.iconStyle
         let mono = store.prefs.monochrome
-        let language = store.prefs.language   // the tooltip is localized; a change must re-render
+        // The tooltip is localized, so a language change already shows up as a new model; reading the
+        // language here only keeps this render inside the observation that fires on the change.
+        _ = store.prefs.language
         guard let button = item.button else { return }
-        if model == lastModel, style == lastStyle, mono == lastMono, language == lastLanguage { return }
-        lastLanguage = language
+        if model == lastModel, style == lastStyle, mono == lastMono { return }
         lastModel = model; lastStyle = style; lastMono = mono
         let rendered = IconRenderer.render(model, style: style, monochrome: mono)
         if popover.isShown { resizePopover() }

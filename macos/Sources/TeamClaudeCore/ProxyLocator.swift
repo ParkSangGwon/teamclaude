@@ -161,7 +161,15 @@ public enum ServiceDiagnosis: Sendable, Equatable {
         case .notLoaded: return L("Service installed but not loaded")
         case .portHeldElsewhere(let pid, let cmd, let runs):
             return L("Port is served by another process (%@); the LaunchAgent cannot start", cmd.isEmpty ? "pid \(pid)" : "\(cmd), pid \(pid)") + (runs.map { " " + L("(%d attempts)", $0) } ?? "")
-        case .crashLooping(let runs, let code): return L("Service is crash-looping") + (runs.map { " " + L("(%d runs", $0) } ?? "") + (code.map { ", " + L("last exit %d)", $0) } ?? ")")
+        case .crashLooping(let runs, let code):
+            let detail: String?
+            switch (runs, code) {
+            case (let r?, let c?): detail = L("(%d runs, last exit %d)", r, c)
+            case (let r?, nil): detail = L("(%d runs)", r)
+            case (nil, let c?): detail = L("(last exit %d)", c)
+            case (nil, nil): detail = nil
+            }
+            return L("Service is crash-looping") + (detail.map { " " + $0 } ?? "")
         case .stopped: return L("Service loaded but not running")
         }
     }

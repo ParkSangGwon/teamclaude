@@ -90,7 +90,7 @@ struct HistoryStrip: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 3))
-        .accessibilityLabel(segments.map { "\(L($0.state)) \(Derived.formatDuration($0.to.timeIntervalSince($0.from)))" }.joined(separator: ", "))
+        .accessibilityLabel(segments.map { "\(UnavailableText.table[$0.state].map { L($0) } ?? L($0.state)) \(Derived.formatDuration($0.to.timeIntervalSince($0.from)))" }.joined(separator: ", "))
     }
 
     static func color(for state: String) -> Color {

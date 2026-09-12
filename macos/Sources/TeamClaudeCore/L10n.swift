@@ -25,6 +25,7 @@ public enum L10n {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var table: [String: String] = [:]
     nonisolated(unsafe) private static var current = "en"
+    nonisolated(unsafe) private static var missing = false
 
     /// The language the Mac prefers among the ones the app ships.
     public static func systemDefault(preferences: [String] = Locale.preferredLanguages) -> String {
@@ -36,11 +37,13 @@ public enum L10n {
     public static func activate(_ code: String?) -> String {
         let chosen = supported.contains { $0.code == code } ? code! : systemDefault()
         let loaded = loadTable(chosen)
-        lock.lock(); table = loaded; current = chosen; lock.unlock()
+        lock.lock(); table = loaded; current = chosen; missing = chosen != "en" && loaded.isEmpty; lock.unlock()
         return chosen
     }
 
     public static var language: String { lock.lock(); defer { lock.unlock() }; return current }
+    /// True when the active language has no table in this build (the UI is showing English).
+    public static var translationMissing: Bool { lock.lock(); defer { lock.unlock() }; return missing }
 
     public static func string(_ key: String) -> String {
         lock.lock(); defer { lock.unlock() }
@@ -58,7 +61,6 @@ public enum L10n {
         var candidates: [URL] = []
         if let r = Bundle.main.resourceURL { candidates.append(r) }
         candidates.append(Bundle.main.bundleURL)
-        candidates.append(Bundle.main.bundleURL.deletingLastPathComponent())
         let own = Bundle(for: BundleAnchor.self).bundleURL
         candidates.append(own)
         candidates.append(own.deletingLastPathComponent())
@@ -76,11 +78,6 @@ public enum L10n {
               let data = try? Data(contentsOf: url),
               let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String] else { return [:] }
         return dict
-    }
-
-    /// Which languages actually have a table on disk (a translation file that failed to ship shows up here).
-    public static func availableOnDisk() -> [String] {
-        supported.map(\.code).filter { $0 == "en" || !loadTable($0).isEmpty }
     }
 
     private final class BundleAnchor {}

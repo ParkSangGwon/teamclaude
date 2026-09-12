@@ -43,7 +43,7 @@ struct RoutingPane: View {
                 .padding(10).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
             }
             if let live = store.status?.routes.filter({ $0.autocreated }), !live.isEmpty {
-                Text("Auto routes from the proxy: " + live.map { "\($0.name) → \($0.target.map(store.compactName) ?? "—")" }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(L("Auto routes from the proxy: %@", live.map { "\($0.name) → \($0.target.map(store.compactName) ?? "—")" }.joined(separator: " · "))).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Text(L("First matching route wins; listed accounts are exclusive. Pins made with `s` in the TUI are runtime-only and shown above as \"pinned\".")).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Divider()
@@ -94,7 +94,7 @@ struct RouteSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(draft.isNew ? "Add route" : "Edit route").font(.headline)
+            Text(draft.isNew ? L("Add route") : L("Edit route")).font(.headline)
             HStack { Text(L("Name")).frame(width: 80, alignment: .trailing); TextField("fable", text: $draft.name).textFieldStyle(.roundedBorder).disabled(!draft.isNew) }
             HStack { Text(L("Match")).frame(width: 80, alignment: .trailing); TextField("*fable*, *opus*", text: $draft.match).textFieldStyle(.roundedBorder) }
             HStack(alignment: .top) {

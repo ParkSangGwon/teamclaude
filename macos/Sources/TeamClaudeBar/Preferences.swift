@@ -70,7 +70,8 @@ final class Preferences {
         alertPrefs = (d.data(forKey: "alertPrefs").flatMap { try? JSONDecoder().decode(AlertPrefs.self, from: $0) }) ?? AlertPrefs()
         alertState = (d.data(forKey: "alertState").flatMap { try? JSONDecoder().decode(AlertState.self, from: $0) }) ?? AlertState()
         rotationLog = (d.data(forKey: "rotationLog").flatMap { try? JSONDecoder().decode(RotationLog.self, from: $0) }) ?? RotationLog()
-        language = d.string(forKey: "language")
+        // A code from a build that shipped more languages must not leave the picker on an invalid selection.
+        language = d.string(forKey: "language").flatMap { code in L10n.supported.contains { $0.code == code } ? code : nil }
         L10n.activate(language)
     }
 }

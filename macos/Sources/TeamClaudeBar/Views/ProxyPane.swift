@@ -67,7 +67,7 @@ struct ProxyPane: View {
                 Button(L("Uninstall"), role: .destructive) { Task { await store.service("uninstall") } }
             } message: { Text(L("The proxy stops and no longer starts at login. The config and accounts are kept; reinstall from this pane.")) }
             card(L("teamclaude CLI")) {
-                row(L("Detected"), store.cliLocation.map { "\($0.describe) (\($0.source.rawValue))" } ?? L("not found"))
+                row(L("Detected"), store.cliLocation.map { "\($0.describe) (\(sourceLabel($0.source)))" } ?? L("not found"))
                 row(L("Version"), store.cliVersion ?? "—")
                 HStack {
                     TextField(L("Override path to teamclaude"), text: $cliPath).textFieldStyle(.roundedBorder).frame(maxWidth: 380)
@@ -86,6 +86,14 @@ struct ProxyPane: View {
             Task { await store.refreshServiceHealth() }
         }
     }
+    private func sourceLabel(_ s: CLILocation.Source) -> String {
+        switch s {
+        case .launchAgent: return "LaunchAgent"
+        case .loginShell: return L("login shell")
+        case .manual: return L("manual override")
+        }
+    }
+
 
     private var connectionText: String {
         switch store.connection {
@@ -158,7 +166,7 @@ struct WarmStatusView: View {
 
     var summary: String {
         guard warm.enabled else { return L("off") }
-        var parts = [warm.mode.map { L("mode %@", $0) } ?? L("on")]
+        var parts = [warm.mode.map { L("mode %@", L($0)) } ?? L("on")]
         if warm.intervalSeconds > 0 { parts.append(L("every %d s", warm.intervalSeconds)) }
         if let tz = quotaWarmup["timezone"].string { parts.append(tz) }
         if let next = warm.nextRunAt ?? quotaWarmup["nextWarmupAt"].date { parts.append(L("next in %@", Derived.formatReset(next))) }
@@ -174,7 +182,7 @@ struct WarmStatusView: View {
             Text(summary).font(.system(size: 12)).foregroundStyle(.secondary)
             ForEach(warm.accounts, id: \.name) { a in
                 let when = a.lastAt.map { L("warmed %@ ago", Derived.formatDuration(Date().timeIntervalSince($0))) } ?? L("never warmed")
-                let text = "\(store.compactName(a.name)): \(a.status ?? "—") · \(when)" + (a.error.map { " · \($0)" } ?? "")
+                let text = "\(store.compactName(a.name)): \(a.status.map { L($0) } ?? "—") · \(when)" + (a.error.map { " · \($0)" } ?? "")
                 Text(text).font(.system(size: 11)).foregroundStyle(a.error == nil ? Color.secondary : Color.red)
             }
         }
@@ -198,7 +206,7 @@ struct ProbeStatusView: View {
             Text(L("Probe status")).font(.system(size: 13, weight: .semibold))
             Text(summary).font(.system(size: 12)).foregroundStyle(.secondary)
             ForEach(probe.accounts, id: \.name) { a in
-                let text = "\(store.compactName(a.name)): \(a.status ?? "—")" + (a.error.map { " · \($0)" } ?? "")
+                let text = "\(store.compactName(a.name)): \(a.status.map { L($0) } ?? "—")" + (a.error.map { " · \($0)" } ?? "")
                 Text(text).font(.system(size: 11)).foregroundStyle(a.error == nil ? Color.secondary : Color.red)
             }
         }
@@ -256,7 +264,7 @@ struct WarmupEditor: View {
                 Text(L("Time zone"))
                 TextField("Area/City", text: $timezone).textFieldStyle(.roundedBorder).frame(width: 200)
             }
-            Text(warmMode == "reset" ? "Warm up before a daily target reset in that zone." : "Anchor resets at that time, then continue every five hours.")
+            Text(warmMode == "reset" ? L("Warm up before a daily target reset in that zone.") : L("Anchor resets at that time, then continue every five hours."))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }

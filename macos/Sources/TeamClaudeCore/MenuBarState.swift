@@ -56,7 +56,7 @@ public enum MenuBarState {
             return IconModel(state: .starting, fiveHour: nil, weekly: nil, label: nil, tooltip: L("TeamClaude: connecting to the proxy…"), tag: nil)
         }
         if status.accounts.isEmpty {
-            return IconModel(state: .noAccounts, fiveHour: 0, weekly: 0, label: "5h 0", tooltip: L("No accounts configured — open Settings → Accounts"), tag: nil)
+            return IconModel(state: .noAccounts, fiveHour: 0, weekly: 0, label: "5h 0%", tooltip: L("No accounts configured — open Settings → Accounts"), tag: nil)
         }
 
         // Source of the bars: fleet aggregate by default, the current account when pinned

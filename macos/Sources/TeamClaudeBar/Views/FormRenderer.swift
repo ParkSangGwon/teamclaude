@@ -51,7 +51,7 @@ struct FieldRow: View {
         case .double(let min, let max, let step, let unit):
             NumberEditor(value: value.double, integer: false, min: min, max: max, step: step, unit: unit, onCommit: { onCommit($0.map(JSON.number)) })
         case .text(let placeholder):
-            TextEditorRow(value: value.string ?? "", placeholder: placeholder ?? "", onCommit: { onCommit($0.isEmpty ? nil : .string($0)) })
+            TextEditorRow(value: value.string ?? "", placeholder: placeholder.map { L($0) } ?? "", onCommit: { onCommit($0.isEmpty ? nil : .string($0)) })
         case .secret:
             SecretEditor(value: value.string, canRegenerate: field.id == "proxy.apiKey", onCommit: { onCommit($0.map(JSON.string)) })
         case .picker(let options):
@@ -59,7 +59,7 @@ struct FieldRow: View {
                 ForEach(options, id: \.self) { Text($0).tag($0) }
             }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 360)
         case .stringList:
-            TextEditorRow(value: value.stringArray.joined(separator: ", "), placeholder: "comma-separated", onCommit: { text in
+            TextEditorRow(value: value.stringArray.joined(separator: ", "), placeholder: L("comma-separated"), onCommit: { text in
                 let items = text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 onCommit(items.isEmpty ? nil : .array(items.map(JSON.string)))
             })
@@ -97,7 +97,7 @@ struct NumberEditor: View {
         HStack(spacing: 8) {
             TextField("", text: $text).textFieldStyle(.roundedBorder).frame(width: 110).multilineTextAlignment(.trailing)
                 .onSubmit(commit)
-            if let unit { Text(unit).font(.system(size: 12)).foregroundStyle(.secondary) }
+            if let unit { Text(L(unit)).font(.system(size: 12)).foregroundStyle(.secondary) }
             Stepper("", onIncrement: { bump(step) }, onDecrement: { bump(-step) }).labelsHidden()
             if let error { Text(error).font(.system(size: 11)).foregroundStyle(.red) }
             Spacer()
