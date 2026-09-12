@@ -20,7 +20,7 @@ import { problems, routeRows } from '../src/dashboard.js';
 
 const fixturesDir = fileURLToPath(new URL('../macos/Tests/TeamClaudeCoreTests/Fixtures/', import.meta.url));
 const cliPath = fileURLToPath(new URL('../src/index.js', import.meta.url));
-const STATUS_REFERENCE = 'status-1.1.18.json';
+const STATUS_REFERENCE = 'status-1.1.20.json';
 const QUOTA_REFERENCE = 'quota-live.json';
 
 const statusFixtures = readdirSync(fixturesDir).filter(name => /^status-.*\.json$/.test(name)).sort();

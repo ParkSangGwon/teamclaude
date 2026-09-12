@@ -204,7 +204,7 @@ final class AppStore {
                 updateNote = L("Updated to %@ — restart the proxy to run it", installed)
                 showToast(.ok, updateNote!)
             } else if r.succeeded {
-                updateNote = r.stdout.split(separator: "\n").last.map(String.init) ?? "Already up to date"
+                updateNote = r.stdout.split(separator: "\n").last.map(String.init) ?? L("Already up to date")
                 showToast(.info, updateNote!)
             } else {
                 updateNote = r.failureMessage
@@ -405,7 +405,10 @@ final class AppStore {
     /// The hotkey: move traffic to the next account in priority order that can serve, wrapping around.
     func switchToNextAvailable() {
         guard let status, !status.accounts.isEmpty else { showToast(.warn, L("No accounts to switch between")); return }
-        let ordered = status.accountsByPriority
+        // Stay within the current account's provider: a Codex account cannot take Claude traffic.
+        let provider = status.current?.provider ?? Providers.anthropic
+        let ordered = status.accountsByPriority.filter { status.providers.count == 1 || $0.provider == provider }
+        guard !ordered.isEmpty else { showToast(.warn, L("No other account can serve right now")); return }
         let start = ordered.firstIndex { $0.name == status.currentAccount } ?? -1
         for offset in 1...ordered.count {
             let candidate = ordered[(start + offset) % ordered.count]
@@ -469,7 +472,7 @@ final class AppStore {
         } catch let e as SettingsError {
             showToast(.error, "\(label): \(e.message)")
         } catch let e as ConfigError {
-            showToast(.error, "\(label): \(e)")
+            showToast(.error, "\(label): \(e.message)")
         } catch {
             showToast(.error, "\(label): \(error.localizedDescription)")
         }
@@ -527,7 +530,7 @@ final class AppStore {
             let result: Result<JSON, Error> = await Task.detached { Result { try file.load().root } }.value
             switch result {
             case .success(let root): configRoot = root; configError = nil
-            case .failure(let e as ConfigError): configError = "\(e)"
+            case .failure(let e as ConfigError): configError = e.message
             case .failure(let e): configError = e.localizedDescription
             }
         }
@@ -575,7 +578,7 @@ final class AppStore {
     func service(_ verb: String) async {
         do {
             let r = try await runner.run(["service", verb], timeout: 30)
-            if r.succeeded { showToast(.ok, L("Service %@ done", verb)) } else { showToast(.error, "service \(verb): \(r.failureMessage)") }
+            if r.succeeded { showToast(.ok, verb == "install" ? L("Service installed") : verb == "uninstall" ? L("Service uninstalled") : L("Service %@ done", verb)) } else { showToast(.error, "service \(verb): \(r.failureMessage)") }
         } catch let e as CLIError {
             showToast(.error, e.message)
         } catch {

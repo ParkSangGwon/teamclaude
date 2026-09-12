@@ -18,8 +18,8 @@ enum Fixtures {
     static func status(_ name: String) throws -> StatusSnapshot { try StatusSnapshot(json: json(name)) }
     static func quota(_ name: String) throws -> QuotaSnapshot { try QuotaSnapshot(json: json(name)) }
 
-    static let statusNames = ["status-live-1.1.16.json", "status-1.1.18.json", "status-two-accounts-b-quota.json",
-                              "status-hold.json", "status-empty.json", "status-hostile.json"]
+    static let statusNames = ["status-live-1.1.16.json", "status-1.1.20.json", "status-two-accounts-b-quota.json",
+                              "status-hold.json", "status-empty.json", "status-hostile.json", "status-mixed-providers.json"]
 }
 
 /// Epoch milliseconds for a moment relative to `now`, the shape quota resets take on the wire.

@@ -54,7 +54,7 @@ final class StatusDecodingTests: XCTestCase {
     }
 
     func testNewerShapeCarriesDefaultTargetAndThresholdTable() throws {
-        let s = try Fixtures.status("status-1.1.18.json")
+        let s = try Fixtures.status("status-1.1.20.json")
         XCTAssertTrue(s.hasDefaultTarget)
         XCTAssertEqual(s.defaultTarget, "bob@example.com")
         XCTAssertEqual(s.effectiveDefaultTarget, "bob@example.com")

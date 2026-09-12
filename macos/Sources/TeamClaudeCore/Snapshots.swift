@@ -14,6 +14,9 @@ public struct StatusSnapshot: Sendable, Equatable {
     public var warm: JobState?
     public var currentAccount: String?
     public var defaultTarget: String?
+    /// 1.1.20+: the current account and the unrouted target per provider (`anthropic`, `codex`).
+    public var currentAccounts: [String: String]
+    public var defaultTargets: [String: String]
     public var switchThreshold: Double
     public var switchThresholds: [String: Double]?
     public var routes: [Route]
@@ -38,6 +41,8 @@ public struct StatusSnapshot: Sendable, Equatable {
         warm = json["warm"].object.map { _ in JobState(json: json["warm"]) }
         currentAccount = json["currentAccount"].string.map(Text.safe)
         defaultTarget = json["defaultTarget"].string.map(Text.safe)
+        currentAccounts = (json["currentAccounts"].object ?? [:]).compactMapValues { $0.string.map(Text.safe) }
+        defaultTargets = (json["defaultTargets"].object ?? [:]).compactMapValues { $0.string.map(Text.safe) }
         switchThreshold = json["switchThreshold"].double ?? 0.98
         switchThresholds = json["switchThresholds"].object?.compactMapValues(\.double)
         routes = (json["routes"].array ?? []).map(Route.init(json:))
@@ -63,6 +68,20 @@ public struct StatusSnapshot: Sendable, Equatable {
     /// Where an unrouted request lands right now (falls back to the current account).
     public var effectiveDefaultTarget: String? { defaultTarget ?? currentAccount }
     public var current: Account? { account(named: currentAccount) }
+
+    /// Providers the fleet spans, Anthropic first; one entry on a plain Claude fleet.
+    public var providers: [String] {
+        Array(Set(accounts.map(\.provider))).sorted { ($0 == Providers.anthropic ? 0 : 1, $0) < ($1 == Providers.anthropic ? 0 : 1, $1) }
+    }
+    /// The account carrying its provider's traffic: per provider on 1.1.20+, the single cursor before.
+    public func isCurrent(_ a: Account) -> Bool {
+        currentAccounts.isEmpty ? a.name == currentAccount : currentAccounts[a.provider] == a.name
+    }
+    /// Where its provider's next unrouted request lands (nil on a server without `defaultTarget`).
+    public func defaultTarget(for provider: String) -> String? {
+        defaultTargets[provider] ?? (provider == Providers.anthropic ? effectiveDefaultTarget : nil)
+    }
+    public func isNext(_ a: Account) -> Bool { !isCurrent(a) && defaultTarget(for: a.provider) == a.name }
 
     public func account(named name: String?) -> Account? {
         guard let name else { return nil }
@@ -262,9 +281,11 @@ public struct Route: Sendable, Equatable {
     public var pinned: String?
     public var accounts: [RouteAccount]
     public var target: String?
+    public var provider: String
 
     init(json: JSON) {
         name = Text.safe(json["name"].string ?? "")
+        provider = json["provider"].string.map { Text.safe($0, max: 32) } ?? Providers.anthropic
         match = json["match"].stringArray.map { Text.safe($0, max: 64) }
         bucket = json["bucket"].string
         color = json["color"].string
@@ -272,6 +293,19 @@ public struct Route: Sendable, Equatable {
         pinned = json["pinned"].string.map(Text.safe)
         accounts = (json["accounts"].array ?? []).map { RouteAccount(name: Text.safe($0["name"].string ?? ""), eligible: $0["eligible"].bool ?? false) }
         target = json["target"].string.map(Text.safe)
+    }
+}
+
+public enum Providers {
+    public static let anthropic = "anthropic"
+    public static let codex = "codex"
+    /// dashboard.js `providerLabel`.
+    public static func label(_ provider: String) -> String {
+        switch provider {
+        case anthropic: return "Claude"
+        case codex: return "Codex"
+        default: return provider
+        }
     }
 }
 
@@ -288,6 +322,8 @@ public struct SessionsInfo: Sendable, Equatable {
     public var mode: String
     public var draining: Int
     public var perAccount: [Int: Int]
+    /// account index → sessions still remembered there (1.1.20+).
+    public var knownPerAccount: [Int: Int]
     public var starvedMax: Int
     /// Present when `proxy.sessionDetail` is on.
     public var items: [SessionItem]
@@ -302,6 +338,9 @@ public struct SessionsInfo: Sendable, Equatable {
         var per: [Int: Int] = [:]
         for (k, v) in json["perAccount"].object ?? [:] { if let i = Int(k), let n = v.int { per[i] = n } }
         perAccount = per
+        var known: [Int: Int] = [:]
+        for (k, v) in json["knownPerAccount"].object ?? [:] { if let i = Int(k), let n = v.int { known[i] = n } }
+        knownPerAccount = known
         starvedMax = json["starvedMax"].int ?? 0
         items = (json["items"].array ?? []).filter { $0.object != nil }.map(SessionItem.init(json:))
     }
@@ -352,7 +391,11 @@ public struct Account: Sendable, Equatable {
     /// Why the account is out of rotation, or nil when it can serve. Unknown
     /// codes are kept verbatim; `UnavailableText.label` falls back to the code.
     public var unavailable: String?
+    /// `anthropic` or `codex` (1.1.20+; older servers report no provider).
+    public var provider: String
     public var sessions: Int
+    /// Sessions the tracker still remembers on this account, active or not (1.1.20+).
+    public var knownSessions: Int
     public var quota: Quota
     public var usage: Usage
     public var rateLimitedUntil: Date?
@@ -374,7 +417,9 @@ public struct Account: Sendable, Equatable {
         maxUsage = json["maxUsage"]
         status = json["status"].string ?? "active"
         unavailable = json["unavailable"].string.map { Text.safe($0, max: 32) }
+        provider = json["provider"].string.map { Text.safe($0, max: 32) } ?? Providers.anthropic
         sessions = json["sessions"].int ?? 0
+        knownSessions = json["knownSessions"].int ?? 0
         quota = Quota(json: json["quota"])
         usage = Usage(json: json["usage"])
         rateLimitedUntil = json["rateLimitedUntil"].date

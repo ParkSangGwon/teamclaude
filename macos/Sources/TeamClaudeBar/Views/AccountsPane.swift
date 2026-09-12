@@ -12,7 +12,7 @@ struct AccountsPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("\(rows.count) account\(rows.count == 1 ? "" : "s") in the config").font(.system(size: 13, weight: .semibold))
+                Text(rows.count == 1 ? L("1 account in the config") : L("%d accounts in the config", rows.count)).font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Menu(L("Add account…")) {
                     Button(L("Claude subscription (browser sign-in)")) { adding = .oauth }
@@ -49,7 +49,7 @@ struct AccountCard: View {
     @State private var confirmRemove = false
 
     var name: String { row["name"].string ?? "" }
-    var isCurrent: Bool { store.status?.currentAccount == name }
+    var isCurrent: Bool { live.map { store.status?.isCurrent($0) ?? false } ?? false }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -70,7 +70,7 @@ struct AccountCard: View {
                 }
                 Spacer()
                 if !isCurrent, live != nil { Button(L("Make current")) { store.switchTo(name) }.controlSize(.small) }
-                Button(expanded ? "Less" : "More") { toggle() }.controlSize(.small)
+                Button(expanded ? L("Less") : L("More")) { toggle() }.controlSize(.small)
             }
             HStack(spacing: 12) {
                 Toggle(L("On"), isOn: Binding(get: { row["disabled"].bool != true }, set: { on in Task { await store.setEnabled(name, org: row["orgUuid"].string, on) } })).toggleStyle(.switch).controlSize(.small)
@@ -91,7 +91,7 @@ struct AccountCard: View {
                 Divider()
                 ForEach(SettingsSchema.accountFields) { field in
                     FieldRow(field: field, value: row[field.id]) { new in
-                        Task { await store.apply(.accountField(name: name, id: row["id"].string, key: field.id, value: new, applies: field.applies), label: L("%@ of %@", L(field.label), name)) }
+                        Task { await store.apply(.accountField(name: name, id: row["id"].string, key: field.id, value: new, applies: field.applies), label: L("%@ for %@", L(field.label), name)) }
                     }
                 }
                 if let uuid = row["accountUuid"].string {

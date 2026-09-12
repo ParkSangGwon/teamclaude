@@ -1,0 +1,155 @@
+{
+  "currentAccount": "alice@example.com",
+  "currentAccounts": {
+    "anthropic": "alice@example.com",
+    "codex": "carol@example.com"
+  },
+  "defaultTargets": {
+    "anthropic": "alice@example.com",
+    "codex": "carol@example.com"
+  },
+  "defaultTarget": "alice@example.com",
+  "switchThreshold": 0.98,
+  "switchThresholds": null,
+  "expiryRouting": {
+    "enabled": false,
+    "tolerance": 1.2,
+    "preemptCurrent": false
+  },
+  "routes": [
+    {
+      "name": "fable",
+      "match": [
+        "*fable*"
+      ],
+      "bucket": null,
+      "color": null,
+      "autocreated": true,
+      "provider": "anthropic",
+      "pinned": null,
+      "accounts": [
+        {
+          "name": "alice@example.com",
+          "eligible": true
+        }
+      ],
+      "target": "alice@example.com"
+    }
+  ],
+  "sessions": {
+    "known": 2,
+    "active": 1,
+    "perAccount": {
+      "0": 1
+    },
+    "knownPerAccount": {
+      "0": 2
+    },
+    "perAccountBucket": {},
+    "tokens": {
+      "cacheRead": 0,
+      "cacheCreation": 0,
+      "input": 0,
+      "output": 0,
+      "reports": 0,
+      "activeContext": 0,
+      "byBucket": {}
+    },
+    "starvedMax": 0,
+    "distribute": false,
+    "mode": "off",
+    "draining": 0
+  },
+  "adaptive": [],
+  "accounts": [
+    {
+      "name": "alice@example.com",
+      "type": "oauth",
+      "provider": "anthropic",
+      "orgName": null,
+      "priority": 0,
+      "disabled": false,
+      "maxUsage": null,
+      "status": "active",
+      "unavailable": null,
+      "sessions": 1,
+      "knownSessions": 2,
+      "pressure": 0,
+      "sessionsByBucket": null,
+      "quota": {
+        "unified5h": 0.4,
+        "unified7d": 0.5,
+        "unified7dFable": 0.3,
+        "unified5hReset": 1757700000000,
+        "unified7dReset": 1757900000000,
+        "unified7dFableReset": 1757900000000,
+        "unifiedStatus": "allowed"
+      },
+      "usage": {
+        "totalRequests": 3,
+        "totalInputTokens": 10,
+        "totalOutputTokens": 20,
+        "totalCacheReadTokens": 0,
+        "totalCacheCreationTokens": 0,
+        "byBucket": {}
+      },
+      "rateLimitedUntil": null,
+      "pausedUntil": null,
+      "entitlementDeniedUntil": null
+    },
+    {
+      "name": "carol@example.com",
+      "type": "oauth",
+      "provider": "codex",
+      "orgName": null,
+      "priority": 0,
+      "disabled": false,
+      "maxUsage": null,
+      "status": "active",
+      "unavailable": null,
+      "sessions": 0,
+      "knownSessions": 0,
+      "pressure": 0,
+      "sessionsByBucket": null,
+      "quota": {
+        "unified5h": 0.1,
+        "unified7d": 0.2,
+        "unified5hReset": 1757700000000,
+        "unified7dReset": 1757900000000,
+        "unifiedStatus": "allowed",
+        "backend": {
+          "label": "Codex",
+          "text": "5h 10% \u00b7 7d 20%"
+        }
+      },
+      "usage": {
+        "totalRequests": 3,
+        "totalInputTokens": 10,
+        "totalOutputTokens": 20,
+        "totalCacheReadTokens": 0,
+        "totalCacheCreationTokens": 0,
+        "byBucket": {}
+      },
+      "rateLimitedUntil": null,
+      "pausedUntil": null,
+      "entitlementDeniedUntil": null
+    }
+  ],
+  "blockedModels": [],
+  "clients": {},
+  "usageDimensions": {},
+  "server": {
+    "version": "1.1.20",
+    "startedAt": "2026-09-12T07:40:55.605Z",
+    "uptimeSeconds": 3,
+    "port": 3456,
+    "upstream": "https://api.anthropic.com",
+    "eventLoop": {
+      "lastLagMs": 0,
+      "maxLagMs": 1,
+      "stallCount": 0,
+      "lastStallAt": null,
+      "warnLagMs": 500
+    }
+  }
+}

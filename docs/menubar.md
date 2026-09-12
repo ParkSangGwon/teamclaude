@@ -45,7 +45,10 @@ shown in *About* is the proxy release the app was built from.
 - **Accounts** — one row per account: session / weekly / per-family bars with the
   number and reset under each, the sessions pinned to it by model family, and the
   row menu (make current, enable, priority, remove). The tooltip carries expiry
-  pressure and, in adaptive mode, the scorer's weight and headroom.
+  pressure and, in adaptive mode, the scorer's weight and headroom. A fleet that
+  mixes Claude and Codex accounts (1.1.20+) has one current account per provider:
+  the row marker, the header and the routing rows follow the server's
+  per-provider cursors, and the next-account shortcut stays within a provider.
 - **Sessions** — with `proxy.sessionDetail` on, which Claude Code session is pinned
   to which account, what is in flight, and which one is starving.
 - **Rotation** — the last five rotations with the router's reason; the full log
@@ -61,9 +64,9 @@ Settings → General.
 The menu bar title reads `5h 42%` (the fleet's 5-hour usage, or the pinned
 account's with its three-letter tag in front), so it is not mistaken for a battery.
 
-The interface follows the Mac's language setting when it is one of English,
-Korean, Japanese, Simplified Chinese, Spanish, German or French, and can be
-switched in Settings → General → Language without a relaunch. Translations live in
+The interface follows the Mac's preferred-language list (the first of English,
+Korean, Japanese, Simplified Chinese, Spanish, German or French that appears
+there) and can be switched in Settings → General → Language without a relaunch. Translations live in
 `macos/Sources/TeamClaudeCore/Resources/<lang>.lproj/Localizable.strings`, keyed by
 the English text; a missing key shows the English.
 

@@ -78,7 +78,7 @@ struct PopoverView: View {
     private var accountMenu: some View {
         if snapshotMode {
             HStack(spacing: 4) {
-                Text(store.status?.currentAccount.map(store.displayName) ?? "No current account").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                Text(currentTitle).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
             }
         } else {
@@ -93,7 +93,7 @@ struct PopoverView: View {
                     Button {
                         store.switchTo(a.name)
                     } label: {
-                        let mark = a.name == status.currentAccount ? "✓ " : (a.name == status.effectiveDefaultTarget ? "→ " : "   ")
+                        let mark = status.isCurrent(a) ? "✓ " : (status.isNext(a) ? "→ " : "   ")
                         let why = UnavailableText.label(a.unavailable).map { " · \($0)" } ?? ""
                         Text(mark + store.displayName(a.name) + why)
                     }
@@ -104,12 +104,21 @@ struct PopoverView: View {
                 }
             }
         } label: {
-            Text(store.status?.currentAccount.map(store.displayName) ?? "No current account").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+            Text(currentTitle).font(.system(size: 13, weight: .semibold)).lineLimit(1)
         }
         .menuStyle(.borderlessButton).menuIndicator(.visible)
         .frame(maxWidth: 240, alignment: .leading)
         .disabled(store.isDown || !store.switchSupported)
         .help(store.isDown ? L("The proxy is not reachable") : store.switchSupported ? L("Switch the current account") : L("This proxy version cannot switch accounts"))
+    }
+
+    /// The account carrying traffic; a mixed fleet names one per provider, as the dashboard does.
+    private var currentTitle: String {
+        guard let status = store.status else { return L("No current account") }
+        if status.currentAccounts.count > 1 {
+            return status.providers.compactMap { p in status.currentAccounts[p].map { Providers.label(p) + ": " + store.compactName($0) } }.joined(separator: " · ")
+        }
+        return status.currentAccount.map(store.displayName) ?? L("No current account")
     }
 
     /// Freshness first: it is the part that changes.
@@ -134,7 +143,7 @@ struct PopoverView: View {
             VStack(spacing: 6) {
                 ForEach(Array(items.prefix(3).enumerated()), id: \.offset) { _, b in b }
                 if items.count > 3 {
-                    Text("+\(items.count - 3) more").font(.system(size: 10)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
+                    Text(L("+%d more", items.count - 3)).font(.system(size: 10)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
         }
@@ -179,7 +188,7 @@ struct PopoverView: View {
     private func fleetCard(_ quota: QuotaSnapshot, status: StatusSnapshot, now: Date) -> some View {
         let known = quota.aggregate["fiveHour"]?.knownAccounts ?? 0
         VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: L("Fleet"), trailing: L("weighted by tier · %d/%d known", known, quota.accounts.count) + (quota.unknownTiers.isEmpty ? "" : " · " + L("%d tier unknown", quota.unknownTiers.count)))
+            SectionHeader(title: L("Fleet"), trailing: L("weighted by tier · %d/%d known", known, quota.accounts.count) + (quota.unknownTiers.isEmpty ? "" : " · " + L("%d without a tier", quota.unknownTiers.count)))
             Card {
                 fleetRow(L("Session"), quota, key: "fiveHour", window: Window.fiveHour, threshold: status.thresholdFor(bucket: Buckets.fiveHour), now: now)
                 fleetRow(L("Weekly"), quota, key: "weeklyShared", window: Window.sevenDay, threshold: status.thresholdFor(bucket: Buckets.weekly), now: now)
@@ -225,7 +234,7 @@ struct PopoverView: View {
                     (e.freesCapacity ? "↑ " : "") + "\(store.compactName(e.account)) \(e.bucket) \(Derived.formatReset(e.resetAt, now: now))"
                 }.joined(separator: "  ·  ")
                 Text(L("Resets:") + " " + line).font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary).lineLimit(3).fixedSize(horizontal: false, vertical: true)
-                    .help(entries.map { L("%@ · %@ resets %@", $0.account, $0.bucket, Derived.formatResetLong($0.resetAt, style: .both, now: now)) + ($0.freesCapacity ? " · " + L("brings the account back into rotation") : "") }.joined(separator: "\n"))
+                    .help(entries.map { L("%@ · %@: %@", $0.account, $0.bucket, Derived.formatResetLong($0.resetAt, style: .both, now: now)) + ($0.freesCapacity ? " · " + L("brings the account back into rotation") : "") }.joined(separator: "\n"))
                 Text(warmText(quota)).font(.system(size: 10)).foregroundStyle(.secondary)
             }
         }
@@ -234,7 +243,7 @@ struct PopoverView: View {
     private func warmText(_ quota: QuotaSnapshot) -> String {
         let warm = quota.warmup
         guard warm["enabled"].bool == true else { return L("Keep-warm off") }
-        var s = L("Keep-warm %@", warm["mode"].string ?? L("on"))
+        var s = L("Keep-warm %@", warm["mode"].string.map { L($0) } ?? L("on"))
         if let next = warm["nextWarmupAt"].date { s += " · " + L("next in %@", Derived.formatReset(next)) }
         return s
     }
@@ -250,7 +259,7 @@ struct PopoverView: View {
                     Circle().fill(Color.route(r.color)).frame(width: 6, height: 6)
                     Text(r.label).font(.system(size: 11))
                     Text("→").foregroundStyle(.secondary).font(.system(size: 11))
-                    Text(r.blocked ? "blocked" : r.target.map(store.compactName) ?? "—").font(.system(size: 11)).foregroundStyle(r.blocked ? .red : .primary).lineLimit(1)
+                    Text(r.blocked ? L("blocked") : r.target.map(store.compactName) ?? "—").font(.system(size: 11)).foregroundStyle(r.blocked ? .red : .primary).lineLimit(1)
                     Spacer()
                     Text(routeNote(r)).font(.system(size: 10)).foregroundStyle(r.pinMismatch ? .orange : .secondary).lineLimit(1)
                 }

@@ -69,8 +69,8 @@ struct AccountTableRow: View {
     @State private var askPriority = false
     @State private var confirmRemove = false
 
-    var isCurrent: Bool { account.name == status.currentAccount }
-    var isNext: Bool { status.effectiveDefaultTarget == account.name && !isCurrent }
+    var isCurrent: Bool { status.isCurrent(account) }
+    var isNext: Bool { status.isNext(account) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -197,7 +197,10 @@ struct AccountTableRow: View {
     }
 
     private var subtitle: String {
-        var parts = [Derived.tierBadge(quotaAccount?.tier)]
+        var parts: [String] = []
+        // The provider only earns a word once the fleet mixes Claude and Codex accounts.
+        if status.providers.count > 1 { parts.append(Providers.label(account.provider)) }
+        parts.append(Derived.tierBadge(quotaAccount?.tier))
         if account.disabled { parts.append(L("disabled")) }
         else if account.status == "throttled", let until = account.rateLimitedUntil {
             let r = Derived.formatReset(until, now: now)
@@ -205,6 +208,7 @@ struct AccountTableRow: View {
         } else if account.status != "active" { parts.append(L(account.status)) }
         if account.priority != 0 { parts.append(L("prio %d", account.priority)) }
         if account.sessions > 0 { parts.append(L("%d sess", account.sessions) + Derived.formatSessionBuckets(account.sessionsByBucket)) }
+        if account.knownSessions > account.sessions { parts.append(L("%d known", account.knownSessions)) }
         return parts.joined(separator: " · ")
     }
 
@@ -215,7 +219,7 @@ struct AccountTableRow: View {
         if let p = account.pressure, p > 0 { lines.append(L("Expiry pressure %@/s", String(format: "%.2f", p))) }
         if let row = status.adaptive.first(where: { $0.name == account.name }) { lines.append(Derived.formatAdaptive(row)) }
         if let spend = account.quota.spend, spend.enabled {
-            let used = spend.usedMinor.map { Derived.formatMoney(minor: $0, currency: spend.currency, exponent: spend.exponent) } ?? "$0.00"
+            let used = Derived.formatMoney(minor: spend.usedMinor ?? 0, currency: spend.currency, exponent: spend.exponent)
             let limit = spend.limitMinor.map { " / " + Derived.formatMoney(minor: $0, currency: spend.currency, exponent: spend.exponent) } ?? ""
             lines.append(L("Overage %@ this month", used + limit))
         }

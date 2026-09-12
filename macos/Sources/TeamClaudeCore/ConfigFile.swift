@@ -5,6 +5,15 @@ public enum ConfigError: Error, Sendable, Equatable {
     case notObject
     case changedUnderneath
     case write(String)
+
+    public var message: String {
+        switch self {
+        case .notFound(let path): return L("Config file not found: %@", path)
+        case .notObject: return L("The config must be a JSON object")
+        case .changedUnderneath: return L("The config changed underneath the edit — try again")
+        case .write(let detail): return L("Could not write the config: %@", detail)
+        }
+    }
 }
 
 /// `~/.config/teamclaude.json`: the same file the CLI and the server write. It

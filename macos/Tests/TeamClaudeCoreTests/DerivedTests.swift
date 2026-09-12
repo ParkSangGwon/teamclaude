@@ -114,7 +114,7 @@ final class DerivedTests: XCTestCase {
         XCTAssertEqual(Derived.formatResetLong(real.addingTimeInterval(2 * 3600), style: .countdown, now: real), "Resets in 2h")
         XCTAssertEqual(Derived.formatResetLong(real.addingTimeInterval(3 * 86400 + 12 * 3600), style: .countdown, now: real), "Resets in 3d 12h")
         XCTAssertEqual(Derived.formatResetLong(real.addingTimeInterval(3 * 86400), style: .countdown, now: real), "Resets in 3d")
-        XCTAssertEqual(Derived.formatResetLong(real.addingTimeInterval(-1), now: real), "Reset due")
+        XCTAssertEqual(Derived.formatResetLong(real.addingTimeInterval(-1), now: real), "Reset overdue")
         XCTAssertEqual(Derived.formatResetLong(nil, now: real), "")
     }
 
@@ -312,9 +312,9 @@ final class DerivedTests: XCTestCase {
         XCTAssertEqual(p.count, 4, "three listed plus the overflow row")
         XCTAssertEqual(p[0].kind, "starved-session")
         XCTAssertEqual(p[0].severity, .bad)
-        XCTAssertEqual(p[0].text, "claude-code's session dddddddd has had 9 requests in a row come back with nothing (teamclaude) — it is failing, not idle.")
+        XCTAssertEqual(p[0].text, "Session claude-code dddddddd has had 9 requests in a row come back with nothing (teamclaude) — it is failing, not idle.")
         XCTAssertEqual(p[1].text, "Session ffffffff has had 8 requests in a row come back with nothing — it is failing, not idle.")
-        XCTAssertEqual(p[2].text, "claude-code's session bbbbbbbb has had 7 requests in a row come back with nothing (teamclaude) — it is failing, not idle.")
+        XCTAssertEqual(p[2].text, "Session claude-code bbbbbbbb has had 7 requests in a row come back with nothing (teamclaude) — it is failing, not idle.")
         XCTAssertEqual(p[3].kind, "starved-more")
         XCTAssertEqual(p[3].text, "and 2 more sessions are getting nothing back.")
     }

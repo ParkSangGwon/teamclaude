@@ -104,7 +104,7 @@ public enum Derived {
     public static func formatResetLong(_ resetAt: Date?, style: ResetStyle = .both, now: Date = Date(), calendar: Calendar = .current) -> String {
         guard let resetAt else { return "" }
         let remaining = resetAt.timeIntervalSince(now)
-        if remaining <= 0 { return L("Reset due") }
+        if remaining <= 0 { return L("Reset overdue") }
         let spaced = spacedCountdown(remaining)
         let clock = clockText(resetAt, now: now, calendar: calendar)
         switch style {
@@ -210,7 +210,7 @@ public enum Derived {
         let prefix = a.next ? L("next") + " · " : ""
         if let w = a.weight { parts.append(prefix + L("weight %d%% of %@", percentInt(w), family)) } else { parts.append(prefix + L("weight n/a (all reserved, %@)", family)) }
         parts.append(L("%d sess / %d inflight", a.sessions, a.inFlight))
-        if let h = a.headroom { parts.append(L("head %@%% of %d%%", String(format: "%.1f", h * 100), percentInt(a.threshold ?? 0))) }
+        if let h = a.headroom { parts.append(L("headroom %@%% of %d%%", String(format: "%.1f", h * 100), percentInt(a.threshold ?? 0))) }
         parts.append(a.planWeight.map { L("plan %dx", safeInt($0)) } ?? L("plan unknown"))
         if let c = a.concCap { parts.append(L("conc %@", String(format: "%.1f", c))) }
         let line = parts.joined(separator: " · ")
@@ -292,7 +292,7 @@ extension Derived {
 
     /// Every account's upcoming window resets, soonest first, so the fleet's capacity return is visible.
     public static func resetTimeline(_ q: QuotaSnapshot, status: StatusSnapshot?, now: Date = Date(), limit: Int = 6) -> [ResetEntry] {
-        let labels: [(String, String, String?)] = [("fiveHour", "5h", nil), ("weeklyShared", "wk", nil), ("weeklyFable", "F7", Buckets.fable), ("weeklySonnet", "S7", Buckets.sonnet)]
+        let labels: [(String, String, String?)] = [("fiveHour", "5h", nil), ("weeklyShared", L("wk"), nil), ("weeklyFable", "F7", Buckets.fable), ("weeklySonnet", "S7", Buckets.sonnet)]
         var out: [ResetEntry] = []
         for acc in q.accounts {
             let live = status?.account(named: acc.name)
@@ -410,12 +410,25 @@ extension Derived {
             )
         }
         if !rows.isEmpty {
-            rows.append(RouteRow(
-                kind: .default, name: "", label: L("Everything else"), match: "",
-                target: s.effectiveDefaultTarget, pinned: nil, pinMismatch: false, blocked: false, autocreated: false,
-                eligible: [], ineligible: [], color: nil,
-                current: s.currentAccount, currentUnavailable: s.current?.unavailable
-            ))
+            // One default row per provider on 1.1.20+ (a mixed Claude/Codex fleet has two cursors); one row before.
+            if s.defaultTargets.isEmpty {
+                rows.append(RouteRow(
+                    kind: .default, name: "", label: L("Everything else"), match: "",
+                    target: s.effectiveDefaultTarget, pinned: nil, pinMismatch: false, blocked: false, autocreated: false,
+                    eligible: [], ineligible: [], color: nil,
+                    current: s.currentAccount, currentUnavailable: s.current?.unavailable
+                ))
+            } else {
+                for provider in s.providers where s.defaultTargets[provider] != nil || s.currentAccounts[provider] != nil {
+                    let current = s.currentAccounts[provider] ?? s.currentAccount
+                    rows.append(RouteRow(
+                        kind: .default, name: "", label: L("%@ default", Providers.label(provider)), match: "",
+                        target: s.defaultTargets[provider], pinned: nil, pinMismatch: false, blocked: false, autocreated: false,
+                        eligible: [], ineligible: [], color: nil,
+                        current: current, currentUnavailable: s.account(named: current)?.unavailable
+                    ))
+                }
+            }
         }
         return rows
     }
@@ -446,7 +459,7 @@ extension Derived {
             let client = it["client"].string.map { Text.safe($0, max: 32) }
             let id = String((it["id"].string ?? "").prefix(8))
             let project = it["dimensions"]["project"].string.map { Text.safe($0, max: 48) }
-            let head = client.map { L("%@'s session", $0) } ?? L("Session")
+            let head = client.map { L("Session %@", $0) } ?? L("Session")
             out.append(Problem(severity: .bad, kind: "starved-session",
                                text: L("%@ %@ has had %d requests in a row come back with nothing%@", head, id, it["starved"].int ?? 0, project.map { " (\($0))" } ?? "") + why))
         }
