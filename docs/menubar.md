@@ -1,5 +1,7 @@
 # Menu bar app (macOS)
 
+Screenshots, features and a quick start are in [macos/README.md](../macos/README.md); this page is the reference.
+
 `macos/` holds **TeamClaude Bar**, a native menu bar client for a running proxy: the
 account rotation is on right now, how much of each account's 5-hour and weekly
 quota is left, and the settings screen — without switching to a terminal.

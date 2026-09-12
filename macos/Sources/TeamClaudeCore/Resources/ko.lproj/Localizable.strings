@@ -60,6 +60,7 @@
 "1 account in the config" = "설정에 계정 1개";
 "1 change needs a proxy restart" = "변경 1건은 프록시 재시작 필요";
 "1 origin" = "오리진 1개";
+"1 session%@ · %d requests" = "세션 1개%@ · 요청 %d건";
 "1 stall" = "정지 1회";
 "127.0.0.1 keeps the proxy local; 0.0.0.0 accepts off-box clients, which must then present the proxy key." = "127.0.0.1은 프록시를 로컬로 제한하고, 0.0.0.0은 외부 클라이언트를 받되 프록시 키를 제시해야 함.";
 "24 h" = "24 h";

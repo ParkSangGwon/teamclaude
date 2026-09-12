@@ -74,7 +74,7 @@ final class DerivedTests: XCTestCase {
         XCTAssertEqual(Derived.formatDuration(2 * 86400), "2d")
         XCTAssertEqual(Derived.formatDuration(3 * 3600 + 5 * 60), "3h5m")
         XCTAssertEqual(Derived.formatDuration(0), "1s")
-        XCTAssertEqual(Derived.formatDuration(-1), "-")
+        XCTAssertEqual(Derived.formatDuration(-1), "1s", "a tick that trails the poll reads as now")
         XCTAssertEqual(Derived.formatDuration(.nan), "-")
         XCTAssertEqual(Derived.formatDuration(.infinity), "-")
     }

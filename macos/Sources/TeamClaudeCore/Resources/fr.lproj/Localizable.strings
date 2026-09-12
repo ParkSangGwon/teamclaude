@@ -60,6 +60,7 @@
 "1 account in the config" = "1 compte dans la configuration";
 "1 change needs a proxy restart" = "1 modification nécessite un redémarrage du proxy";
 "1 origin" = "1 origine";
+"1 session%@ · %d requests" = "1 session%@ · %d requêtes";
 "1 stall" = "1 blocage";
 "127.0.0.1 keeps the proxy local; 0.0.0.0 accepts off-box clients, which must then present the proxy key." = "127.0.0.1 garde le proxy local ; 0.0.0.0 accepte les clients distants, qui doivent alors présenter la clé du proxy.";
 "24 h" = "24 h";

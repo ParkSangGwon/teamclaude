@@ -49,6 +49,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             button.imageHugsTitle = true
         }
         popover.behavior = .transient
+        // A status-item popover follows the menu bar's appearance (dark over a dark wallpaper), not the app's;
+        // documentation screenshots pin it with the same variable App.swift honours.
+        if let raw = ProcessInfo.processInfo.environment["TEAMCLAUDE_BAR_DEBUG_APPEARANCE"] {
+            popover.appearance = NSAppearance(named: raw == "dark" ? .darkAqua : .aqua)
+        }
         popover.animates = false
         popover.delegate = self
         let hosting = NSHostingController(rootView: AnyView(PopoverView().environment(store)))
@@ -114,6 +119,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         store.refreshNow()
         resizePopover()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // The popover window takes the menu bar's appearance when it is created; a screenshot pin applies here.
+        if let raw = ProcessInfo.processInfo.environment["TEAMCLAUDE_BAR_DEBUG_APPEARANCE"] {
+            popover.contentViewController?.view.window?.appearance = NSAppearance(named: raw == "dark" ? .darkAqua : .aqua)
+        }
         popover.contentViewController?.view.window?.makeKey()
     }
 

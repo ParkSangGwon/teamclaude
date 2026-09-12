@@ -60,6 +60,7 @@
 "1 account in the config" = "配置中有 1 个账户";
 "1 change needs a proxy restart" = "1 项更改需要重启代理";
 "1 origin" = "1 个来源";
+"1 session%@ · %d requests" = "1 个会话%@ · %d 个请求";
 "1 stall" = "1 次停滞";
 "127.0.0.1 keeps the proxy local; 0.0.0.0 accepts off-box clients, which must then present the proxy key." = "127.0.0.1 仅限本机访问代理；0.0.0.0 接受外部客户端，此时客户端必须提供代理密钥。";
 "24 h" = "24 h";

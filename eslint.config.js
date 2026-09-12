@@ -1,5 +1,5 @@
 export default [
-  // The macOS app under macos/ is Swift; nothing there is for eslint.
+  // The macOS app under macos/ is Swift, and its two helper scripts are dev-only.
   { ignores: ['macos/**'] },
   {
     languageOptions: {

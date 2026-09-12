@@ -244,7 +244,7 @@ struct PopoverView: View {
         let warm = quota.warmup
         guard warm["enabled"].bool == true else { return L("Keep-warm off") }
         var s = L("Keep-warm %@", warm["mode"].string.map { L($0) } ?? L("on"))
-        if let next = warm["nextWarmupAt"].date { s += " · " + L("next in %@", Derived.formatReset(next)) }
+        if let next = warm["nextWarmupAt"].date, case let r = Derived.formatReset(next), !r.isEmpty { s += " · " + L("next in %@", r) }
         return s
     }
 

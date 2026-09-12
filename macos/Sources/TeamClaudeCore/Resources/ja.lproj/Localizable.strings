@@ -60,6 +60,7 @@
 "1 account in the config" = "設定内のアカウント 1 件";
 "1 change needs a proxy restart" = "1 件の変更にプロキシの再起動が必要";
 "1 origin" = "1 オリジン";
+"1 session%@ · %d requests" = "1 セッション%@ · %d リクエスト";
 "1 stall" = "ストール 1 件";
 "127.0.0.1 keeps the proxy local; 0.0.0.0 accepts off-box clients, which must then present the proxy key." = "127.0.0.1 はプロキシをローカルに限定。0.0.0.0 は外部クライアントを受け付け、その場合プロキシキーの提示が必要。";
 "24 h" = "24 h";

@@ -75,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.terminate(nil)
             }
         }
+        // `TEAMCLAUDE_BAR_DEBUG_APPEARANCE=light|dark` pins the appearance for documentation screenshots
+        // (the status-item popover pins its own in StatusItemController).
+        if let raw = ProcessInfo.processInfo.environment["TEAMCLAUDE_BAR_DEBUG_APPEARANCE"] {
+            NSApp.appearance = NSAppearance(named: raw == "dark" ? .darkAqua : .aqua)
+        }
         // `TEAMCLAUDE_BAR_DEBUG_WINDOW=<section>` opens the settings window on that
         // section and the popover, and logs their window numbers for `screencapture -l`.
         if let raw = ProcessInfo.processInfo.environment["TEAMCLAUDE_BAR_DEBUG_WINDOW"], let section = SettingsSection(rawValue: raw) {

@@ -79,7 +79,7 @@ Step-by-step lifecycle: [docs/routing.md](docs/routing.md#request-lifecycle).
 | [Quota](docs/quota.md) | Quota probe, keep-warm, holding on exhaustion |
 | [Configuration](docs/configuration.md) | Config format, every field, environment variables, network tuning |
 | [Proxy modes](docs/proxy-modes.md) | MITM forward proxy, sx.org residential egress |
-| [Menu bar app](docs/menubar.md) | macOS menu bar client: current account, quota bars, switch, settings, service health |
+| [Menu bar app](macos/README.md) | macOS menu bar client: accounts and quota bars in the menu bar, switch, every setting, service health ([reference](docs/menubar.md)) |
 | [Compliance](docs/compliance.md) | Terms of service notes |
 
 ## Security

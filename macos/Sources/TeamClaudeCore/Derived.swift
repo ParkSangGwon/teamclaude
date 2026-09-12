@@ -92,8 +92,9 @@ public enum Derived {
 
     /// status-renderer `formatDuration` for probe/uptime figures.
     public static func formatDuration(_ interval: TimeInterval) -> String {
-        guard interval.isFinite, interval >= 0, interval < 1e15 else { return "-" }
-        let totalSeconds = max(1, Int(interval.rounded()))
+        guard interval.isFinite, interval < 1e15 else { return "-" }
+        // A TimelineView tick can trail the poll that just landed by a few milliseconds: that is "now", not a dash.
+        let totalSeconds = max(1, Int(max(0, interval).rounded()))
         if totalSeconds < 60 { return "\(totalSeconds)s" }
         return tiered(minutes: Int((Double(totalSeconds) / 60).rounded(.up)), separator: "")
     }

@@ -81,7 +81,7 @@ struct AccountCard: View {
                     Button(L("Bottom")) { Task { await store.setPriority(name, org: row["orgUuid"].string, .last) } }.controlSize(.mini).fixedSize()
                 }
                 if let live {
-                    Text(L("%d sessions%@ · %d requests", live.sessions, Derived.formatSessionBuckets(live.sessionsByBucket), live.usage.totalRequests) + (live.pressure.map { $0 > 0 ? " · " + L("pressure %@/s", String(format: "%.2f", $0)) : "" } ?? ""))
+                    Text((live.sessions == 1 ? L("1 session%@ · %d requests", Derived.formatSessionBuckets(live.sessionsByBucket), live.usage.totalRequests) : L("%d sessions%@ · %d requests", live.sessions, Derived.formatSessionBuckets(live.sessionsByBucket), live.usage.totalRequests)) + (live.pressure.map { $0 > 0 ? " · " + L("pressure %@/s", String(format: "%.2f", $0)) : "" } ?? ""))
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()

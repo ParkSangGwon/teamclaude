@@ -169,8 +169,8 @@ struct WarmStatusView: View {
         var parts = [warm.mode.map { L("mode %@", L($0)) } ?? L("on")]
         if warm.intervalSeconds > 0 { parts.append(L("every %d s", warm.intervalSeconds)) }
         if let tz = quotaWarmup["timezone"].string { parts.append(tz) }
-        if let next = warm.nextRunAt ?? quotaWarmup["nextWarmupAt"].date { parts.append(L("next in %@", Derived.formatReset(next))) }
-        if let reset = quotaWarmup["nextResetAt"].date { parts.append(L("target reset in %@", Derived.formatReset(reset))) }
+        if let next = warm.nextRunAt ?? quotaWarmup["nextWarmupAt"].date, case let r = Derived.formatReset(next), !r.isEmpty { parts.append(L("next in %@", r)) }
+        if let reset = quotaWarmup["nextResetAt"].date, case let r = Derived.formatReset(reset), !r.isEmpty { parts.append(L("target reset in %@", r)) }
         if let last = warm.lastRunFinishedAt { parts.append(L("last %@ ago", Derived.formatDuration(Date().timeIntervalSince(last)))) }
         if warm.running { parts.append(L("running now")) }
         return parts.joined(separator: " · ")
@@ -196,7 +196,7 @@ struct ProbeStatusView: View {
     var summary: String {
         guard probe.enabled else { return L("off (quota is read from responses; idle accounts stay unknown until rotation reaches them)") }
         var s = L("every %d s", probe.intervalSeconds)
-        if let next = probe.nextRunAt { s += " · " + L("next in %@", Derived.formatReset(next)) }
+        if let next = probe.nextRunAt, case let r = Derived.formatReset(next), !r.isEmpty { s += " · " + L("next in %@", r) }
         if let last = probe.lastRunFinishedAt { s += " · " + L("last %@ ago", Derived.formatDuration(Date().timeIntervalSince(last))) }
         return s
     }
