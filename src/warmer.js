@@ -29,6 +29,22 @@ import {
 const SCHEDULE_TIMER_GRACE_MS = 60_000;
 
 export class Warmer {
+  /**
+   * @param {Object} accountManager
+   * @param {Object} opts
+   * @param {number} [opts.intervalMs]
+   * @param {Object|null} [opts.schedule]
+   * @param {number} [opts.port]
+   * @param {string|null} [opts.apiKey]
+   * @param {string} [opts.model]
+   * @param {string} [opts.prompt]
+   * @param {Function} [opts.spawnFn]
+   * @param {number} [opts.timeoutMs]
+   * @param {Function} [opts.log]
+   * @param {Function} [opts.nowFn]
+   * @param {Function} [opts.setTimeoutFn]
+   * @param {Function} [opts.clearTimeoutFn]
+   */
   constructor(accountManager, {
     intervalMs = 0,
     schedule = null,
@@ -219,7 +235,8 @@ export class Warmer {
     if (generation !== this._scheduleGeneration || this._stopped) return false;
     if (deadline !== null && this.nowFn() >= deadline) return false;
     this._running = true;
-    let finishRun;
+    /** @type {(value?: unknown) => void} */
+    let finishRun = () => {};
     const runFinished = new Promise(resolve => { finishRun = resolve; });
     this._runFinished = runFinished;
     const abort = this._abort = new AbortController();
@@ -326,11 +343,16 @@ export class Warmer {
   /** The `claude` invocation for one account. Pure/deterministic so tests can
    *  assert the args and env without spawning anything. */
   _spawnSpec(account, signal) {
-    // Pin by accountUuid — a stable identity. The rotation index is NOT usable:
-    // it is array position, so removing an account would repoint this at a
+    // One user can have accounts in several organizations, all sharing the
+    // same accountUuid. Qualify it with orgUuid when possible so each warm-up
+    // reaches the intended subscription. The rotation index is NOT usable: it
+    // is array position, so removing an account would repoint this at a
     // different one. Fall back to the display name when the uuid isn't known
-    // yet (e.g. an API-key account, or before the first profile fetch).
-    const pin = encodePinComponent(account.accountUuid || account.name);
+    // yet (e.g. before the first profile fetch).
+    const identity = account.accountUuid && account.orgUuid
+      ? `${account.accountUuid}/${account.orgUuid}`
+      : account.accountUuid || account.name;
+    const pin = encodePinComponent(identity);
     const baseUrl = `http://127.0.0.1:${this.port}/tc-acct/${pin}`;
     return {
       command: 'claude',
