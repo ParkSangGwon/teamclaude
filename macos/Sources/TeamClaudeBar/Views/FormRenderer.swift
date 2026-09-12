@@ -56,7 +56,7 @@ struct FieldRow: View {
             SecretEditor(value: value.string, canRegenerate: field.id == "proxy.apiKey", onCommit: { onCommit($0.map(JSON.string)) })
         case .picker(let options):
             Picker(L(field.label), selection: Binding(get: { value.string ?? options.first ?? "" }, set: { if $0 != value.string { onCommit(.string($0)) } })) {
-                ForEach(options, id: \.self) { Text($0).tag($0) }
+                ForEach(options, id: \.self) { Text(L($0)).tag($0) }
             }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 360)
         case .stringList:
             TextEditorRow(value: value.stringArray.joined(separator: ", "), placeholder: L("comma-separated"), onCommit: { text in
@@ -264,9 +264,9 @@ struct ObjectListEditor: View {
                                            set: { if rows.indices.contains(i) { rows[i][f] = $0 } })
                         Group {
                             if secret {
-                                SecureField(f, text: text)
+                                SecureField(L(f), text: text)
                             } else {
-                                TextField(f, text: text)
+                                TextField(L(f), text: text)
                             }
                         }.textFieldStyle(.roundedBorder).frame(width: 180)
                     }

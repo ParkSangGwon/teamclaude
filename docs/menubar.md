@@ -52,7 +52,9 @@ shown in *About* is the proxy release the app was built from.
 - **Sessions** — with `proxy.sessionDetail` on, which Claude Code session is pinned
   to which account, what is in flight, and which one is starving.
 - **Rotation** — the last five rotations with the router's reason; the full log
-  (fifty entries) is under Settings → Rotation.
+  (fifty entries) is under Settings → Rotation. Reasons are stored as data and
+  worded in the active language when shown; on a mixed fleet each provider's
+  cursor is followed on its own.
 - **History** (Settings) — seven days of samples the app took itself, one a minute:
   a fleet sparkline and a state strip per account, kept in
   `~/Library/Application Support/TeamClaudeBar/history.json`.
@@ -66,7 +68,9 @@ account's with its three-letter tag in front), so it is not mistaken for a batte
 
 The interface follows the Mac's preferred-language list (the first of English,
 Korean, Japanese, Simplified Chinese, Spanish, German or French that appears
-there) and can be switched in Settings → General → Language without a relaunch. Translations live in
+there) and can be switched in Settings → General → Language without a relaunch.
+Dates and weekday names follow that language too, with the Mac's own region
+conventions for the hour and the order of the parts. Translations live in
 `macos/Sources/TeamClaudeCore/Resources/<lang>.lproj/Localizable.strings`, keyed by
 the English text; a missing key shows the English.
 

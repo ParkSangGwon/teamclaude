@@ -281,16 +281,18 @@ final class AppStore {
                 if let installedVersion { cliVersion = installedVersion; self.installedVersion = nil }
                 showToast(.ok, L("Proxy restarted"))
             }
-            let prevTarget = previousStatus?.effectiveDefaultTarget
+            let prevTargets = previousStatus?.targetsByProvider ?? [:]
             // The same ten-second window the alert engine uses for "the app did this itself".
             let justSwitchedTo = appSwitchedTo.flatMap { Date().timeIntervalSince($0.at) < 10 ? $0.name : nil }
-            if let prev = prevTarget, let cur = s.effectiveDefaultTarget, prev != cur {
-                if justSwitchedTo != cur {
+            for (provider, cur) in s.targetsByProvider.sorted(by: { $0.key < $1.key }) {
+                guard let prev = prevTargets[provider], prev != cur else { continue }
+                let manual = justSwitchedTo == cur
+                if !manual {
                     rotatedAt = Date()
                     rotatedTo = cur
                 }
-                let reason = Derived.rotationReason(from: prev, to: cur, previous: previousStatus, status: s)
-                prefs.rotationLog.append(RotationEvent(at: Date(), from: prev, to: cur, reason: justSwitchedTo == cur ? L("switched from the app") : reason, manual: justSwitchedTo == cur))
+                let cause: RotationCause? = manual ? .manual : Derived.rotationCause(from: prev, to: cur, previous: previousStatus, status: s)
+                prefs.rotationLog.append(RotationEvent(at: Date(), from: prev, to: cur, cause: cause, manual: manual))
             }
         case .failure(let e):
             failureStreak += 1

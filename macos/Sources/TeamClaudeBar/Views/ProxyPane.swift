@@ -15,7 +15,7 @@ struct ProxyPane: View {
                 row(L("Endpoint"), store.endpoint.label)
                 row(L("State"), connectionText)
                 if let s = store.status?.server {
-                    row(L("Started"), s.startedAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "—")
+                    row(L("Started"), s.startedAt.map { Derived.localizedDate($0, date: .abbreviated, time: .shortened) } ?? "—")
                     row(L("Upstream"), s.upstream ?? "—")
                     row(L("Version"), s.version.map { L("%@ (reported by the proxy)", $0) } ?? (store.cliVersion.map { L("%@ (from the CLI; the proxy predates version reporting)", $0) } ?? "—"))
                     if let loop = s.eventLoop {
@@ -99,7 +99,7 @@ struct ProxyPane: View {
         switch store.connection {
         case .starting: return store.failureStreak > 0 ? L("no answer yet — retrying…") : L("connecting…")
         case .up: return L("reachable") + (store.lastSuccessAt.map { " · " + L("updated %@ ago", Derived.formatDuration(Date().timeIntervalSince($0))) } ?? "")
-        case .down(let since, let e): return "\(e.message) (" + L("since %@", since.formatted(date: .omitted, time: .shortened)) + ")"
+        case .down(let since, let e): return "\(e.message) (" + L("since %@", Derived.localizedDate(since, date: .omitted, time: .shortened)) + ")"
         }
     }
 

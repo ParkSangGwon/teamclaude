@@ -6,12 +6,19 @@ public struct RotationEvent: Codable, Sendable, Equatable, Identifiable {
     public var at: Date
     public var from: String?
     public var to: String
+    /// Text recorded by builds before `cause` existed, in whatever language was active then.
     public var reason: String?
+    public var cause: RotationCause?
     /// Switched from this app (or the CLI's `switch`), not by rotation.
     public var manual: Bool
 
-    public init(at: Date, from: String?, to: String, reason: String?, manual: Bool) {
-        self.at = at; self.from = from; self.to = to; self.reason = reason; self.manual = manual
+    public init(at: Date, from: String?, to: String, reason: String? = nil, cause: RotationCause? = nil, manual: Bool) {
+        self.at = at; self.from = from; self.to = to; self.reason = reason; self.cause = cause; self.manual = manual
+    }
+
+    /// The reason in the active language; countdowns are as of the event, not of now.
+    public var reasonText: String? {
+        cause.map { Derived.rotationText($0, from: from ?? "—", to: to, now: at) } ?? reason
     }
 }
 

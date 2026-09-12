@@ -82,6 +82,11 @@ public struct StatusSnapshot: Sendable, Equatable {
         defaultTargets[provider] ?? (provider == Providers.anthropic ? effectiveDefaultTarget : nil)
     }
     public func isNext(_ a: Account) -> Bool { !isCurrent(a) && defaultTarget(for: a.provider) == a.name }
+    /// The account each provider's next unrouted request lands on: per provider on 1.1.20+, one entry before.
+    public var targetsByProvider: [String: String] {
+        if defaultTargets.isEmpty { return effectiveDefaultTarget.map { [Providers.anthropic: $0] } ?? [:] }
+        return defaultTargets
+    }
 
     public func account(named name: String?) -> Account? {
         guard let name else { return nil }

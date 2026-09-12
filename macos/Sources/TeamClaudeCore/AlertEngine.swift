@@ -58,6 +58,8 @@ public struct AlertState: Sendable, Equatable, Codable {
     /// metric → levels already fired; a level re-arms once usage falls five points below it.
     public var fired: [String: [Int]] = [:]
     public var lastCurrent: String? = nil
+    /// provider → the account its unrouted requests landed on at the last evaluation (1.1.20+).
+    public var lastCurrents: [String: String] = [:]
     public var allOut = false
     public var errorAccounts: [String] = []
     public var downStreak = 0
@@ -76,6 +78,7 @@ public struct AlertState: Sendable, Equatable, Codable {
         seeded = try c.decodeIfPresent(Bool.self, forKey: .seeded) ?? seeded
         fired = try c.decodeIfPresent([String: [Int]].self, forKey: .fired) ?? fired
         lastCurrent = try c.decodeIfPresent(String.self, forKey: .lastCurrent)
+        lastCurrents = try c.decodeIfPresent([String: String].self, forKey: .lastCurrents) ?? lastCurrents
         allOut = try c.decodeIfPresent(Bool.self, forKey: .allOut) ?? allOut
         errorAccounts = try c.decodeIfPresent([String].self, forKey: .errorAccounts) ?? errorAccounts
         downStreak = try c.decodeIfPresent(Int.self, forKey: .downStreak) ?? downStreak
@@ -165,16 +168,18 @@ public enum AlertEngine {
             }
         }
 
-        // Rotation: the account carrying new requests changed.
-        let current = status.effectiveDefaultTarget
-        if let prev = s.lastCurrent, let cur = current, prev != cur, !seeding, cur != inputs.appSwitchedTo {
-            if prefs.rotation {
-                let reason = Derived.rotationReason(from: prev, to: cur, previous: inputs.previous, status: status, now: inputs.now)
-                emit(Alert(kind: .rotation, id: "rotate.\(prev).\(cur)", title: L("Rotated: %@ → %@", prev, cur),
-                           body: reason ?? L("Rotation moved to %@.", cur), sound: true))
-            }
+        // Rotation: the account carrying new requests changed — per provider, since a Codex cursor moves on its own.
+        let targets = status.targetsByProvider
+        for (provider, cur) in targets.sorted(by: { $0.key < $1.key }) {
+            // A state written before per-provider cursors only knew the Anthropic one.
+            let prev = s.lastCurrents[provider] ?? (provider == Providers.anthropic ? s.lastCurrent : nil)
+            guard let prev, prev != cur, !seeding, cur != inputs.appSwitchedTo, prefs.rotation else { continue }
+            let reason = Derived.rotationReason(from: prev, to: cur, previous: inputs.previous, status: status, now: inputs.now)
+            emit(Alert(kind: .rotation, id: "rotate.\(prev).\(cur)", title: L("Rotated: %@ → %@", prev, cur),
+                       body: reason ?? L("Rotation moved to %@.", cur), sound: true))
         }
-        s.lastCurrent = current
+        s.lastCurrents = targets
+        s.lastCurrent = status.effectiveDefaultTarget
 
         // An account that needs a person.
         let errors = status.accounts.filter { $0.unavailable == "error" }.map(\.name)

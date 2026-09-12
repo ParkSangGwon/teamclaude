@@ -96,3 +96,21 @@ final class L10nTests: XCTestCase {
         XCTAssertEqual(missing, [], "strings without a Korean row (add them to every Localizable.strings)")
     }
 }
+
+extension L10nTests {
+    /// Weekday and month names follow the app language; the hour convention stays the Mac's.
+    func testDatesFollowTheAppLanguage() throws {
+        _ = try XCTUnwrap(L10n.resourceBundle())
+        let monday = Date(timeIntervalSince1970: 1_757_894_400) // 2025-09-15 00:00 UTC, a Monday
+        L10n.activate("ko")
+        XCTAssertEqual(L10n.locale.language.languageCode?.identifier, "ko")
+        XCTAssertEqual(L10n.locale.region, Locale.current.region)
+        let ko = monday.formatted(Date.FormatStyle().weekday(.abbreviated).locale(L10n.locale))
+        L10n.activate("en")
+        let en = monday.formatted(Date.FormatStyle().weekday(.abbreviated).locale(L10n.locale))
+        XCTAssertNotEqual(ko, en)
+        XCTAssertTrue(en.hasPrefix("Mon") || en.hasPrefix("Sun"), "en weekday, whichever side of midnight the Mac's zone is on: \(en)")
+        L10n.activate("zh-Hans")
+        XCTAssertEqual(L10n.locale.language.script?.identifier, "Hans")
+    }
+}

@@ -57,7 +57,7 @@ struct AccountCard: View {
                 Image(systemName: "arrowtriangle.right.fill").font(.system(size: 8)).foregroundStyle(isCurrent ? Color.accentColor : Color.clear)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(store.displayName(name)).font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.middle)
-                    Text([row["orgName"].string, row["type"].string, row["provider"].string, row["importFrom"].string.map { L("from %@", $0) }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text([row["orgName"].string, row["type"].string, row["provider"].string.map(Providers.label), row["importFrom"].string.map { L("from %@", $0) }].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Chip(text: Derived.tierBadge(tier))
                 if let live {

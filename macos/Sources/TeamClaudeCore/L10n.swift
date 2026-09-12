@@ -45,6 +45,14 @@ public enum L10n {
     /// True when the active language has no table in this build (the UI is showing English).
     public static var translationMissing: Bool { lock.lock(); defer { lock.unlock() }; return missing }
 
+    /// The app language with the Mac's own region: Korean weekday names, the user's hour and date order.
+    public static var locale: Locale {
+        let parts = language.split(separator: "-").map(String.init)
+        var c = Locale.Components(languageCode: Locale.LanguageCode(parts[0]), script: parts.count > 1 ? Locale.Script(parts[1]) : nil)
+        c.region = Locale.current.region
+        return Locale(components: c)
+    }
+
     public static func string(_ key: String) -> String {
         lock.lock(); defer { lock.unlock() }
         return table[key] ?? key

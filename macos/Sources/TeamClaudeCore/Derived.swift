@@ -121,13 +121,18 @@ public enum Derived {
     }
 
     static func clockText(_ date: Date, now: Date, calendar: Calendar) -> String {
-        let time = date.formatted(Date.FormatStyle(date: .omitted, time: .shortened))
+        let time = localizedDate(date, date: .omitted, time: .shortened)
         if calendar.isDate(date, inSameDayAs: now) { return L("Today %@", time) }
         if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) { return L("Tomorrow %@", time) }
         if date.timeIntervalSince(now) < 6 * 24 * 3600 {
-            return "\(date.formatted(Date.FormatStyle().weekday(.abbreviated))) \(time)"
+            return "\(date.formatted(Date.FormatStyle().weekday(.abbreviated).locale(L10n.locale))) \(time)"
         }
-        return "\(date.formatted(Date.FormatStyle().month(.abbreviated).day())), \(time)"
+        return "\(date.formatted(Date.FormatStyle().month(.abbreviated).day().locale(L10n.locale))), \(time)"
+    }
+
+    /// A date in the app's language (weekday and month names, the Mac's own hour and order conventions).
+    public static func localizedDate(_ date: Date, date dateStyle: Date.FormatStyle.DateStyle, time: Date.FormatStyle.TimeStyle) -> String {
+        date.formatted(Date.FormatStyle(date: dateStyle, time: time).locale(L10n.locale))
     }
 
     /// status-renderer `formatPercent`: whole percent unless a tenth is meaningful.
@@ -225,26 +230,54 @@ public enum Derived {
 
     /// Why rotation left `from` for `to`, in the order the router decides it: the old account's own
     /// reason, a strictly better priority, then expiry routing. Nil when nothing explains it.
-    public static func rotationReason(from: String, to: String, previous: StatusSnapshot?, status: StatusSnapshot, now: Date = Date()) -> String? {
-        let old = previous?.account(named: from) ?? status.account(named: from)
+    public static func rotationCause(from: String, to: String, previous: StatusSnapshot?, status: StatusSnapshot) -> RotationCause? {
+        // The code that took the old account out is on it in the snapshot that shows the move; the previous one only covers an account that vanished.
+        let old = status.account(named: from) ?? previous?.account(named: from)
         let new = status.account(named: to)
-        if let code = old?.unavailable, let label = UnavailableText.label(code) {
-            let reset = code == "quota" ? old?.quota.unified5hReset.map { " · " + L("resets in %@", formatReset($0, now: now)) } ?? "" : ""
-            return "\(from): \(label)\(reset)"
+        if let code = old?.unavailable {
+            return .unavailable(code: code, resetAt: code == "quota" ? old?.quota.unified5hReset : nil)
         }
         if let o = old, let n = new, n.priority < o.priority {
-            return L("%@ outranks %@ (priority %d < %d)", to, from, n.priority, o.priority)
+            return .outranked(newPriority: n.priority, oldPriority: o.priority)
         }
         if status.expiryRouting?.enabled == true, status.expiryRouting?.preempt == true {
-            return L("expiry routing preferred %@", to)
+            return .expiryRouting
         }
         return nil
     }
+
+    public static func rotationReason(from: String, to: String, previous: StatusSnapshot?, status: StatusSnapshot, now: Date = Date()) -> String? {
+        rotationCause(from: from, to: to, previous: previous, status: status).map { rotationText($0, from: from, to: to, now: now) }
+    }
+
+    /// The cause in the language of the moment it is read, not the moment it was recorded.
+    public static func rotationText(_ cause: RotationCause, from: String, to: String, now: Date = Date()) -> String {
+        switch cause {
+        case .unavailable(let code, let resetAt):
+            let label = UnavailableText.label(code) ?? code
+            let reset = resetAt.map { " · " + L("resets in %@", formatReset($0, now: now)) } ?? ""
+            return "\(from): \(label)\(reset)"
+        case .outranked(let n, let o): return L("%@ outranks %@ (priority %d < %d)", to, from, n, o)
+        case .expiryRouting: return L("expiry routing preferred %@", to)
+        case .manual: return L("switched from the app")
+        }
+    }
+}
+
+/// What moved traffic between two accounts, kept as data so a log entry reads in whichever language is active later.
+public enum RotationCause: Codable, Sendable, Equatable {
+    /// The old account's `unavailable` code, with its 5-hour reset when the code was `quota`.
+    case unavailable(code: String, resetAt: Date?)
+    case outranked(newPriority: Int, oldPriority: Int)
+    case expiryRouting
+    /// Switched from this app (or the CLI's `switch`), not by rotation.
+    case manual
 }
 
 // MARK: - Next-up, reset timeline, aliases
 
 public struct NextUp: Sendable, Equatable {
+    public var provider: String
     public var name: String
     /// "prio 0 · 1 sess · pressure 0.42/s", or the adaptive scorer's own line.
     public var reason: String
@@ -262,22 +295,27 @@ public struct ResetEntry: Sendable, Equatable, Identifiable {
 }
 
 extension Derived {
-    /// Where the next unrouted request goes and why (the server's `defaultTarget`, explained).
-    public static func nextUp(_ s: StatusSnapshot) -> NextUp? {
-        guard let target = s.effectiveDefaultTarget, let acc = s.account(named: target) else { return nil }
-        var parts: [String] = []
-        if let row = s.adaptive.first(where: { $0.name == target }), row.next {
-            parts.append(formatAdaptive(row))
-        } else {
-            if target != s.currentAccount, let cur = s.currentAccount, let why = rotationReason(from: cur, to: target, previous: nil, status: s) {
-                parts.append(why)
+    /// Where the next unrouted request goes and why (the server's `defaultTarget`, explained); one per provider on a mixed fleet.
+    public static func nextUps(_ s: StatusSnapshot) -> [NextUp] {
+        s.providers.compactMap { provider in
+            guard let target = s.defaultTarget(for: provider), let acc = s.account(named: target) else { return nil }
+            let current = s.currentAccounts[provider] ?? s.currentAccount
+            var parts: [String] = []
+            if let row = s.adaptive.first(where: { $0.name == target }), row.next {
+                parts.append(formatAdaptive(row))
+            } else {
+                if let cur = current, target != cur, let why = rotationReason(from: cur, to: target, previous: nil, status: s) {
+                    parts.append(why)
+                }
+                parts.append(L("prio %d", acc.priority))
+                if acc.sessions > 0 { parts.append(L("%d sess", acc.sessions) + formatSessionBuckets(acc.sessionsByBucket)) }
+                if let p = acc.pressure, p > 0 { parts.append(L("pressure %@/s", String(format: "%.2f", p))) }
             }
-            parts.append(L("prio %d", acc.priority))
-            if acc.sessions > 0 { parts.append(L("%d sess", acc.sessions) + formatSessionBuckets(acc.sessionsByBucket)) }
-            if let p = acc.pressure, p > 0 { parts.append(L("pressure %@/s", String(format: "%.2f", p))) }
+            return NextUp(provider: provider, name: target, reason: parts.joined(separator: " · "), isCurrent: target == current)
         }
-        return NextUp(name: target, reason: parts.joined(separator: " · "), isCurrent: target == s.currentAccount)
     }
+
+    public static func nextUp(_ s: StatusSnapshot) -> NextUp? { nextUps(s).first }
 
     /// The fleet's elapsed share of a window: each known account's elapsed fraction, weighted by tier.
     public static func fleetElapsed(_ q: QuotaSnapshot, key: String, window: TimeInterval, now: Date = Date()) -> Double? {

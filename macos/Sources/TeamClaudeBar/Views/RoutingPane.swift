@@ -107,7 +107,7 @@ struct RouteSheet: View {
                 }
             }
             HStack { Text(L("Bucket")).frame(width: 80, alignment: .trailing); Picker("", selection: $draft.bucket) { Text(L("auto (by model family)")).tag(""); Text(L("unified7d (shared weekly)")).tag("unified7d"); Text(L("unified7dFable")).tag("unified7dFable"); Text(L("unified7dSonnet")).tag("unified7dSonnet") }.labelsHidden() }
-            HStack { Text(L("Color")).frame(width: 80, alignment: .trailing); Picker("", selection: $draft.color) { Text(L("default")).tag(""); ForEach(Color.routeNames, id: \.self) { Text($0).tag($0) } }.labelsHidden() }
+            HStack { Text(L("Color")).frame(width: 80, alignment: .trailing); Picker("", selection: $draft.color) { Text(L("default")).tag(""); ForEach(Color.routeNames, id: \.self) { Text(L($0)).tag($0) } }.labelsHidden() }
             if let error { Text(error).foregroundStyle(.red).font(.system(size: 11)) }
             HStack { Spacer(); Button(L("Cancel"), action: dismiss); Button(L("Save")) { save() }.keyboardShortcut(.defaultAction) }
         }

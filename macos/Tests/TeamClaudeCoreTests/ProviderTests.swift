@@ -47,3 +47,39 @@ final class ProviderTests: XCTestCase {
         XCTAssertEqual(Derived.routeRows(s).last?.label, "Claude default")
     }
 }
+
+extension ProviderTests {
+    /// The Codex cursor moving is a rotation of its own, announced and logged even though the Anthropic one stayed put.
+    func testCodexRotationIsAnnouncedOnItsOwn() throws {
+        let before = try Fixtures.status("status-mixed-providers.json")
+        let after = try Fixtures.status("status-mixed-providers-rotated.json")
+        var state = AlertState()
+        var prefs = AlertPrefs(); prefs.rotation = true
+        // Three hours before the fixture's 5-hour reset, so the reason carries a countdown.
+        let now = try XCTUnwrap(after.account(named: "carol@example.com")?.quota.unified5hReset).addingTimeInterval(-3 * 3600)
+        state = AlertEngine.evaluate(AlertInputs(previous: nil, status: before, quota: nil, reachable: true, now: now), state: state, prefs: prefs).state
+        XCTAssertEqual(state.lastCurrents, ["anthropic": "alice@example.com", "codex": "carol@example.com"])
+        let r = AlertEngine.evaluate(AlertInputs(previous: before, status: after, quota: nil, reachable: true, now: now), state: state, prefs: prefs)
+        XCTAssertEqual(r.alerts.filter { $0.kind == .rotation }.map(\.title), ["Rotated: carol@example.com → dave@example.com"])
+        XCTAssertEqual(r.alerts.first { $0.kind == .rotation }?.body, "carol@example.com: local switch threshold reached · resets in 3h")
+        XCTAssertEqual(r.state.lastCurrents["codex"], "dave@example.com")
+        XCTAssertEqual(r.state.lastCurrent, "alice@example.com", "the single cursor stays the Anthropic one for older state readers")
+    }
+
+    func testAStateFromBeforePerProviderCursorsStillDetectsTheAnthropicRotation() throws {
+        let s = try Fixtures.status("status-1.1.20.json")
+        var state = AlertState(); state.seeded = true; state.lastCurrent = "alice@example.com"
+        var prefs = AlertPrefs(); prefs.rotation = true
+        let r = AlertEngine.evaluate(AlertInputs(previous: nil, status: s, quota: nil, reachable: true), state: state, prefs: prefs)
+        XCTAssertEqual(r.alerts.filter { $0.kind == .rotation }.map(\.title), ["Rotated: alice@example.com → \(s.currentAccount!)"])
+    }
+
+    func testNextUpIsOnePerProvider() throws {
+        let s = try Fixtures.status("status-mixed-providers.json")
+        let nexts = Derived.nextUps(s)
+        XCTAssertEqual(nexts.map(\.provider), ["anthropic", "codex"])
+        XCTAssertEqual(nexts.map(\.name), ["alice@example.com", "carol@example.com"])
+        XCTAssertTrue(nexts.allSatisfy(\.isCurrent))
+        XCTAssertEqual(Derived.nextUp(s)?.provider, "anthropic")
+    }
+}

@@ -144,7 +144,7 @@ public actor ProxyClient {
         // without that came from somewhere else and means the feature is missing.
         if let json, json["ok"].bool == true { return json }
         if let json, json["ok"].bool == false {
-            throw ProxyError.rejected(Text.safe(json["error"].string ?? "request refused", max: 200))
+            throw ProxyError.rejected(Text.safe(json["error"].string ?? L("request refused"), max: 200))
         }
         if http.statusCode == 404 || http.statusCode == 501 { throw ProxyError.unsupported }
         throw ProxyError.badReply("HTTP \(http.statusCode)")
@@ -159,7 +159,7 @@ public actor ProxyClient {
         guard let session else { return try await sendOverSocket(req) }
         do {
             let (data, response) = try await session.data(for: req)
-            guard let http = response as? HTTPURLResponse else { throw ProxyError.badReply("not HTTP") }
+            guard let http = response as? HTTPURLResponse else { throw ProxyError.badReply(L("not HTTP")) }
             if data.count > ProxyClient.maxReplyBytes { throw ProxyError.tooLarge }
             return (data, http)
         } catch let e as ProxyError {
@@ -198,7 +198,7 @@ public actor ProxyClient {
         switch result {
         case .success(let r):
             guard let http = HTTPURLResponse(url: req.url!, statusCode: r.status, httpVersion: "HTTP/1.1", headerFields: r.headers) else {
-                throw ProxyError.badReply("bad status \(r.status)")
+                throw ProxyError.badReply(L("bad status %d", r.status))
             }
             return (r.body, http)
         case .failure(.refused): throw ProxyError.unreachable("connection refused")

@@ -183,7 +183,7 @@ struct GeneralPane: View {
                 Toggle(L("Overage billing started"), isOn: $prefs.alertPrefs.spend)
                 HStack {
                     if let until = prefs.alertPrefs.pausedUntil, until > Date() {
-                        Text(L("Paused until %@", until.formatted(date: .omitted, time: .shortened))).foregroundStyle(.secondary)
+                        Text(L("Paused until %@", Derived.localizedDate(until, date: .omitted, time: .shortened))).foregroundStyle(.secondary)
                         Button(L("Resume")) { prefs.alertPrefs.pausedUntil = nil }
                     } else {
                         Button(L("Pause for 1 hour")) { prefs.alertPrefs.pausedUntil = Date().addingTimeInterval(3600) }
@@ -311,10 +311,10 @@ struct RotationLogView: View {
                 Text(L("%d in the last 24 h · %d kept", store.prefs.rotationLog.count(within: 86400), events.count)).font(.system(size: 11)).foregroundStyle(.secondary)
                 ForEach(events) { e in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(e.at.formatted(date: .abbreviated, time: .shortened)).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary).frame(width: 130, alignment: .leading)
+                        Text(Derived.localizedDate(e.at, date: .abbreviated, time: .shortened)).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary).frame(width: 130, alignment: .leading)
                         Text("\(e.from.map(store.displayName) ?? "—") → \(store.displayName(e.to))").font(.system(size: 12, weight: e.manual ? .regular : .medium))
                         if e.manual { Chip(text: L("manual")) }
-                        if let reason = e.reason { Text(reason).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1) }
+                        if let reason = e.reasonText { Text(reason).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1) }
                         Spacer(minLength: 0)
                     }
                 }

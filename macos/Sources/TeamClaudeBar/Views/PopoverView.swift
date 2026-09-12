@@ -289,14 +289,18 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 6) {
             SectionHeader(title: L("Accounts"), trailing: status.sessions.map(Derived.formatSessions))
             AccountsTable(status: status, quota: store.freshQuota, now: now)
-            if status.accounts.count > 1, let next = Derived.nextUp(status) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Image(systemName: "arrow.turn.down.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.accentColor)
-                    Text(next.isCurrent ? L("Next request stays on %@", store.compactName(next.name)) : L("Next → %@", store.compactName(next.name))).font(.system(size: 11, weight: .medium))
-                    Text("· " + next.reason).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
+            if status.accounts.count > 1 {
+                // One line per provider: a mixed fleet has a Claude cursor and a Codex cursor.
+                ForEach(Derived.nextUps(status), id: \.provider) { next in
+                    let prefix = status.providers.count > 1 ? Providers.label(next.provider) + ": " : ""
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Image(systemName: "arrow.turn.down.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(Color.accentColor)
+                        Text(prefix + (next.isCurrent ? L("Next request stays on %@", store.compactName(next.name)) : L("Next → %@", store.compactName(next.name)))).font(.system(size: 11, weight: .medium))
+                        Text("· " + next.reason).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    .padding(.leading, 2)
+                    .help(L("The next unrouted request goes to %@.", next.name) + " " + next.reason)
                 }
-                .padding(.leading, 2)
-                .help(L("The next unrouted request goes to %@.", next.name) + " " + next.reason)
             }
         }
     }
@@ -331,10 +335,10 @@ struct PopoverView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(L("%@ ago", Derived.formatDuration(now.timeIntervalSince(e.at)))).font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary).frame(width: 60, alignment: .leading)
                         Text("\(e.from.map(store.compactName) ?? "—") → \(store.compactName(e.to))").font(.system(size: 11, weight: e.manual ? .regular : .medium)).lineLimit(1)
-                        if let reason = e.reason { Text(reason).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
+                        if let reason = e.reasonText { Text(reason).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
                         Spacer(minLength: 0)
                     }
-                    .help(e.at.formatted(date: .abbreviated, time: .shortened) + (e.reason.map { " · \($0)" } ?? "") + (e.manual ? " · " + L("manual") : ""))
+                    .help(Derived.localizedDate(e.at, date: .abbreviated, time: .shortened) + (e.reasonText.map { " · \($0)" } ?? "") + (e.manual ? " · " + L("manual") : ""))
                 }
             }
         }

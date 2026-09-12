@@ -53,7 +53,7 @@ public enum SocketHTTP {
         var hints = addrinfo(ai_flags: AI_NUMERICSERV, ai_family: AF_UNSPEC, ai_socktype: SOCK_STREAM, ai_protocol: IPPROTO_TCP,
                              ai_addrlen: 0, ai_canonname: nil, ai_addr: nil, ai_next: nil)
         var info: UnsafeMutablePointer<addrinfo>?
-        guard getaddrinfo(host, String(port), &hints, &info) == 0, let first = info else { throw Failure.io("cannot resolve \(host)") }
+        guard getaddrinfo(host, String(port), &hints, &info) == 0, let first = info else { throw Failure.io(L("cannot resolve %@", host)) }
         defer { freeaddrinfo(info) }
         var lastErr: Int32 = ECONNREFUSED
         var ai: UnsafeMutablePointer<addrinfo>? = first
@@ -130,13 +130,13 @@ public enum SocketHTTP {
     }
 
     static func parse(_ raw: Data, maxBody: Int) throws -> Response {
-        guard let sep = raw.range(of: Data("\r\n\r\n".utf8)) else { throw Failure.malformed("no header terminator") }
+        guard let sep = raw.range(of: Data("\r\n\r\n".utf8)) else { throw Failure.malformed(L("no header terminator")) }
         let headText = String(decoding: raw[raw.startIndex..<sep.lowerBound], as: UTF8.self)
         var lines = headText.components(separatedBy: "\r\n")
-        guard let statusLine = lines.first else { throw Failure.malformed("empty head") }
+        guard let statusLine = lines.first else { throw Failure.malformed(L("empty head")) }
         lines.removeFirst()
         let parts = statusLine.split(separator: " ", maxSplits: 2)
-        guard parts.count >= 2, parts[0].hasPrefix("HTTP/"), let status = Int(parts[1]) else { throw Failure.malformed("bad status line") }
+        guard parts.count >= 2, parts[0].hasPrefix("HTTP/"), let status = Int(parts[1]) else { throw Failure.malformed(L("bad status line")) }
         var headers: [String: String] = [:]
         for line in lines {
             guard let colon = line.firstIndex(of: ":") else { continue }
@@ -146,7 +146,7 @@ public enum SocketHTTP {
         if headers["transfer-encoding"]?.lowercased().contains("chunked") == true {
             body = try dechunk(body)
         } else if let len = headers["content-length"].flatMap(Int.init) {
-            guard len >= 0 else { throw Failure.malformed("content-length") }
+            guard len >= 0 else { throw Failure.malformed(L("content-length")) }
             if body.count > len { body = body.prefix(len) }
         }
         if body.count > maxBody { throw Failure.tooLarge }
@@ -157,10 +157,10 @@ public enum SocketHTTP {
         var out = Data()
         var i = data.startIndex
         while i < data.endIndex {
-            guard let lineEnd = data[i...].range(of: Data("\r\n".utf8)) else { throw Failure.malformed("chunk size") }
+            guard let lineEnd = data[i...].range(of: Data("\r\n".utf8)) else { throw Failure.malformed(L("chunk size")) }
             let sizeText = String(decoding: data[i..<lineEnd.lowerBound], as: UTF8.self).split(separator: ";").first ?? ""
             // `Int(_:radix:)` accepts a leading minus; a negative size would trap in the slice below.
-            guard let size = Int(sizeText.trimmingCharacters(in: .whitespaces), radix: 16), size >= 0 else { throw Failure.malformed("chunk size") }
+            guard let size = Int(sizeText.trimmingCharacters(in: .whitespaces), radix: 16), size >= 0 else { throw Failure.malformed(L("chunk size")) }
             if size == 0 { break }
             let start = lineEnd.upperBound
             let end = data.index(start, offsetBy: size, limitedBy: data.endIndex) ?? data.endIndex
